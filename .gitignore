@@ -1,0 +1,52 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.log
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Environment variables
+.env
+*.env
+
+# IDE / editor files
+.vscode/
+.idea/
+*.iml
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Bytecode / build
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Pytest / coverage / mypy
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.pyre/
+.pytype/
+
+# Docker
+*.pid
+*.tar
+*.bak
+
+# Jupyter (if used for testing AI features)
+.ipynb_checkpoints/
+
+# Logs & temp
+*.log
+*.tmp
