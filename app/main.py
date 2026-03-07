@@ -1,3 +1,4 @@
-print("code from sameed")
-print("hello world")
-# sameed ka code 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api import auth
+
