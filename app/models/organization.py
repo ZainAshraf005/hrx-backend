@@ -1,8 +1,18 @@
+from __future__ import annotations
+from typing import List
 from app.models.base import Base
-from sqlalchemy.orm import  Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, Boolean
 
 
 class Organization(Base):
-    __tablename__ = 'organization'
+    __tablename__ = 'organizations'
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    email: Mapped[str] = mapped_column(String, unique=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    users: Mapped[List["User"]] = relationship(
+        "User",
+        back_populates="organization",
+    )
