@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr
 
+from app.schemas.user import UserCreate
+
 
 class OrganizationApply(BaseModel):
-    name: str
-    email: EmailStr
+    org_name: str
+    owner: UserCreate

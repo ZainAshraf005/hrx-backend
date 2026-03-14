@@ -50,3 +50,4 @@ htmlcov/
 # Logs & temp
 *.log
 *.tmp
+alembic.ini

@@ -9,7 +9,8 @@ class Organization(Base):
     __tablename__ = 'organizations'
 
     name: Mapped[str] = mapped_column(String)
-    email: Mapped[str] = mapped_column(String, unique=True)
+    industry: Mapped[str] = mapped_column(String)
+    company_size: Mapped[str] = mapped_column(String)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
 
     users: Mapped[List["User"]] = relationship(

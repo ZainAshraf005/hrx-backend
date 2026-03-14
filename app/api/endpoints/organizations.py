@@ -14,7 +14,7 @@ async def apply_organization(
         data: OrganizationApply,
         db: AsyncSession = Depends(get_db)
 ):
-    org = await apply_for_organization(db, data.name, data.email)
+    org = await apply_for_organization(db, data)
 
     return {
         "message": "Application Submitted",
