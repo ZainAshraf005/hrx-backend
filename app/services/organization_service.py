@@ -1,14 +1,18 @@
+from fastapi import HTTPException
 from sqlalchemy import select
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Organization
+from app.schemas.organization_application import OrganizationApplicationCreate
 from app.schemas.organization_schema import OrganizationCreate, OrganizationUpdate
+from app.models.organization_application import OrganizationApplication, Status
+
 
 class OrganizationService:
-    def __init__(self, db:AsyncSession):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_organization(self, data: OrganizationCreate )->Organization:
+    async def create_organization(self, data: OrganizationCreate) -> Organization:
         # Logic to create an organization in the database
         organization = Organization(
             name=data.name,
@@ -25,6 +29,7 @@ class OrganizationService:
         # Logic to retrieve all organizations from the database
         result = await self.db.execute(select(Organization))
         return result.scalars().all()
+
     async def get_organization(self, organization_id: UUID):
         # Logic to retrieve an organization from the database
         result = await self.db.execute(select(Organization).where(Organization.id == organization_id))
@@ -60,3 +65,37 @@ class OrganizationService:
         await self.db.delete(org)
         await self.db.commit()
         return org
+
+    async def get_all_applications(self):
+        result = await self.db.execute(select(OrganizationApplication))
+        return result.scalars().all()
+
+    async def get_application(self, application_id: UUID):
+        result = await self.db.execute(
+            select(OrganizationApplication).where(OrganizationApplication.id == application_id))
+        return result.scalar_one_or_none()
+
+    async def create_application(self, data: OrganizationApplicationCreate):
+        application = OrganizationApplication(
+            org_name=data.name,
+            email=data.email,
+            website=data.website,
+            description=data.description,
+        )
+        self.db.add(application)
+        await self.db.commit()
+        await self.db.refresh(application)
+        return application
+
+    async def update_application_status(self, application_id: UUID, status: Status):
+        result = await self.db.execute(
+            select(OrganizationApplication).where(OrganizationApplication.id == application_id))
+        application = result.scalar_one_or_none()
+
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+
+        application.status = status
+        await self.db.commit()
+        await self.db.refresh(application)
+        return application
