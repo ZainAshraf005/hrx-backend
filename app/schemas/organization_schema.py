@@ -21,6 +21,7 @@ class OrganizationResponse(BaseModel):
     email: str
     description: Optional[str] = None
     website: Optional[str] = None
+    updated_at: datetime
     created_at: datetime
 
     class Config:

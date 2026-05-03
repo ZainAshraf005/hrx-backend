@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from app.api.organization_controller import router as organization_router
+from app.api.email_test_controller import router as email_test_router
 
 
 # -------------------------
@@ -32,3 +33,4 @@ app = FastAPI(
 # Routes registration
 # -------------------------
 app.include_router(organization_router, prefix="/api")
+app.include_router(email_test_router, prefix="/api")

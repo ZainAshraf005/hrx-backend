@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from uuid import UUID
 from app.dependencies.services import get_organization_service
-from app.models.organization_application import Status
+from app.models.organization.organization_application import Status
 from app.schemas.organization_application import OrganizationApplicationResponse, OrganizationApplicationCreate
 from app.services.organization_service import OrganizationService
 from app.schemas.organization_schema import OrganizationResponse, OrganizationCreate, OrganizationUpdate

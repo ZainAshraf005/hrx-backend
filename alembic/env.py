@@ -1,30 +1,28 @@
 from logging.config import fileConfig
-import asyncio
 import os
-from dotenv import load_dotenv
+import asyncio
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 
-# Load env
-load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
+from dotenv import load_dotenv
 
-# Alembic config
+# load env
+load_dotenv()
+
 config = context.config
 
-# Override alembic.ini URL
+DATABASE_URL = os.getenv("DATABASE_URL")
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
-# Logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import metadata
+# IMPORTANT: import ALL models so metadata is populated
 from app.core.database import Base
-from app.models import *
+from app import models  # this must import everything (your __init__.py fix matters here)
 
 target_metadata = Base.metadata
 
@@ -35,6 +33,19 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection):
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        render_as_batch=True,
     )
 
     with context.begin_transaction():
@@ -50,16 +61,6 @@ def run_migrations_online():
     async def run():
         async with connectable.connect() as connection:
             await connection.run_sync(do_run_migrations)
-
-    def do_run_migrations(connection):
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-        )
-
-        with context.begin_transaction():
-            context.run_migrations()
 
     asyncio.run(run())
 
