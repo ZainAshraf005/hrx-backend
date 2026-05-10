@@ -18,6 +18,7 @@ from app.core.security import (
 )
 from app.models.organization.organization import Organization
 from app.models.organization.organization_invite import OrganizationInvite
+from app.models.employee.employee_model import Employee
 from app.models.user.user_model import User
 from app.services.email_service import EmailService
 
@@ -125,6 +126,43 @@ class AuthService:
             raise HTTPException(status_code=401, detail="Invalid email or password")
         return await self._create_access_token(user)
 
+    async def set_employee_password(self, setup_token: str, password: str):
+        payload = decode_signed_token(setup_token)
+        if not payload or payload.get("purpose") != "employee_setup":
+            raise HTTPException(status_code=400, detail="Invalid or expired setup token")
+
+        try:
+            user_id = UUID(payload["user_id"])
+            employee_id = UUID(payload["employee_id"])
+        except (KeyError, ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid or expired setup token")
+
+        result = await self.db.execute(
+            select(User)
+            .options(selectinload(User.employee), selectinload(User.organization))
+            .where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if (
+            not user
+            or not user.is_active
+            or user.is_verified
+            or user.email != payload.get("email")
+            or str(user.organization_id) != payload.get("organization_id")
+            or not user.employee
+            or user.employee.id != employee_id
+            or not user.employee.is_active
+        ):
+            raise HTTPException(status_code=400, detail="Invalid or expired setup token")
+
+        user.password_hash = hash_password(password)
+        user.is_verified = True
+
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        return await self._create_access_token(user)
+
     async def _get_organization_by_email(self, email: str):
         result = await self.db.execute(select(Organization).where(Organization.email == email))
         return result.scalar_one_or_none()
@@ -132,7 +170,7 @@ class AuthService:
     async def _get_user_by_email(self, email: str):
         result = await self.db.execute(
             select(User)
-            .options(selectinload(User.organization))
+            .options(selectinload(User.organization), selectinload(User.employee))
             .where(User.email == email)
         )
         return result.scalar_one_or_none()
@@ -164,6 +202,7 @@ class AuthService:
             timedelta(hours=12),
         )
         organization = await self.db.get(Organization, user.organization_id) if user.organization_id else None
+        employee = await self._get_employee_by_user_id(user.id) if user.role in {"employee", "hr_manager"} else None
 
         return {
             "access_token": token,
@@ -174,8 +213,13 @@ class AuthService:
                 "role": user.role,
                 "organization_id": user.organization_id,
                 "organization": self._serialize_organization(organization),
+                "employee": self._serialize_employee(employee),
             },
         }
+
+    async def _get_employee_by_user_id(self, user_id: UUID):
+        result = await self.db.execute(select(Employee).where(Employee.user_id == user_id))
+        return result.scalar_one_or_none()
 
     def _serialize_organization(self, organization: Organization | None):
         if not organization:
@@ -187,6 +231,20 @@ class AuthService:
             "email": organization.email,
             "website": organization.website,
             "description": organization.description,
+        }
+
+    def _serialize_employee(self, employee: Employee | None):
+        if not employee:
+            return None
+
+        return {
+            "id": employee.id,
+            "organization_id": employee.organization_id,
+            "first_name": employee.first_name,
+            "last_name": employee.last_name,
+            "phone": employee.phone,
+            "designation": employee.designation,
+            "is_active": employee.is_active,
         }
 
     def _is_expired(self, value: datetime) -> bool:

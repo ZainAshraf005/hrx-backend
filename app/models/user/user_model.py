@@ -24,3 +24,4 @@ class User(BaseModel):
     is_verified = Column(Boolean, default=False)
 
     organization = relationship("Organization")
+    employee = relationship("Employee", back_populates="user", uselist=False)

@@ -59,3 +59,24 @@ class EmailService:
             subject="Your Organization Has Been Approved",
             html=html
         )
+
+    async def send_employee_invite(self, email: str, first_name: str, setup_token: str, frontend_url: str):
+        setup_url = f"{frontend_url.rstrip('/')}/employee/set-password?token={setup_token}"
+        html = f"""
+        <div style="font-family: Arial, sans-serif;">
+            <h2>Employee Account Setup</h2>
+
+            <p>Hello {first_name},</p>
+            <p>Your employee account has been created. Use the link below to set your password.</p>
+
+            <p><a href="{setup_url}">Set your password</a></p>
+
+            <p>This link will expire in 24 hours.</p>
+        </div>
+        """
+
+        await self.send_email(
+            to=email,
+            subject="Set up your employee account",
+            html=html
+        )

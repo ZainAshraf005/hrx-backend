@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.dependencies.services import get_auth_service
 from app.schemas.auth_schema import (
     LoginRequest,
+    EmployeeSetPasswordRequest,
     RequestOtpRequest,
     RequestOtpResponse,
     SetPasswordRequest,
@@ -33,3 +34,8 @@ async def set_org_admin_password(payload: SetPasswordRequest, service: AuthServi
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, service: AuthService = Depends(get_auth_service)):
     return await service.login(payload.email, payload.password)
+
+
+@router.post("/employee/set-password", response_model=TokenResponse)
+async def set_employee_password(payload: EmployeeSetPasswordRequest, service: AuthService = Depends(get_auth_service)):
+    return await service.set_employee_password(payload.setup_token, payload.password)

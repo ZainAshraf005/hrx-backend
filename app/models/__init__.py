@@ -1,3 +1,4 @@
+from app.models.employee.employee_model import Employee
 from app.models.organization.organization import Organization
 from app.models.organization.organization_application import OrganizationApplication
 from app.models.organization.organization_invite import OrganizationInvite
