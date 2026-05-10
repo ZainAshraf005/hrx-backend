@@ -9,6 +9,7 @@ from app.schemas.organization_application import OrganizationApplicationCreate
 from app.schemas.organization_schema import OrganizationCreate, OrganizationUpdate
 from app.models.organization.organization_application import OrganizationApplication, Status
 from app.services.email_service import EmailService
+from app.core.security import normalize_email
 
 class OrganizationService:
     def __init__(self, db: AsyncSession, email_service: EmailService):
@@ -20,7 +21,7 @@ class OrganizationService:
         organization = Organization(
             name=data.name,
             description=data.description,
-            email=data.email,
+            email=normalize_email(str(data.email)),
             website=data.website
         )
         self.db.add(organization)
@@ -48,7 +49,7 @@ class OrganizationService:
         if data.name is not None:
             org.name = data.name
         if data.email is not None:
-            org.email = data.email
+            org.email = normalize_email(str(data.email))
         if data.description is not None:
             org.description = data.description
         if data.website is not None:
@@ -81,7 +82,7 @@ class OrganizationService:
     async def create_application(self, data: OrganizationApplicationCreate):
         application = OrganizationApplication(
             org_name=data.org_name,
-            email=data.email,
+            email=normalize_email(str(data.email)),
             website=data.website,
             description=data.description,
         )
@@ -100,16 +101,21 @@ class OrganizationService:
         if application.status != Status.PENDING:
             raise HTTPException(400, "Application already processed")
         application.status = status
+        should_send_approval_email = False
         if application.status == Status.APPROVED:
             organization = Organization(
-                email=application.email,
+                email=normalize_email(application.email),
                 name=application.org_name,
                 description=application.description,
                 website=application.website
             )
             self.db.add(organization)
-            await self.email_service.send_approval_email(application.email, application.org_name)
+            should_send_approval_email = True
+            await self.db.delete(application)
 
         await self.db.commit()
-        await self.db.refresh(application)
+        if not should_send_approval_email:
+            await self.db.refresh(application)
+        if should_send_approval_email:
+            await self.email_service.send_approval_email(application.email, application.org_name)
         return application

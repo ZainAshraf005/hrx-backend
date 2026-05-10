@@ -15,7 +15,7 @@ class OrganizationInvite(BaseModel):
         nullable=False
     )
 
-    otp = Column(String, nullable=False, unique=True, index=True)
+    otp_hash = Column(String, nullable=False)
 
     is_used = Column(Boolean, default=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)

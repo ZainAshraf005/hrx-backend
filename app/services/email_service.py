@@ -20,17 +20,14 @@ class EmailService:
         message.set_content("This email requires HTML support.")
         message.add_alternative(html, subtype="html")
 
-        try:
-            await aiosmtplib.send(
-                message,
-                hostname=self.smtp_host,
-                port=self.smtp_port,
-                start_tls=True,
-                username=self.email,
-                password=self.password,
-            )
-        except Exception as e:
-            print("EMAIL ERROR:", e)
+        await aiosmtplib.send(
+            message,
+            hostname=self.smtp_host,
+            port=self.smtp_port,
+            start_tls=True,
+            username=self.email,
+            password=self.password,
+        )
 
     async def send_otp(self, email: str, otp: str):
         html = f"""
