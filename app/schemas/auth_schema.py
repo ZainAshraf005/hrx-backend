@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -28,6 +30,23 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class AuthOrganizationResponse(BaseModel):
+    id: UUID
+    name: str
+    email: EmailStr | None = None
+    website: str | None = None
+    description: str | None = None
+
+
+class AuthUserResponse(BaseModel):
+    id: UUID
+    email: EmailStr
+    role: str
+    organization_id: UUID | None = None
+    organization: AuthOrganizationResponse | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user: AuthUserResponse

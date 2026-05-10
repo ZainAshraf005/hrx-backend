@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
@@ -116,20 +117,24 @@ class AuthService:
         await self.db.commit()
         await self.db.refresh(user)
 
-        return self._create_access_token(user)
+        return await self._create_access_token(user)
 
     async def login(self, email: str, password: str):
         user = await self._get_user_by_email(normalize_email(email))
         if not user or not user.is_active or not user.is_verified or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid email or password")
-        return self._create_access_token(user)
+        return await self._create_access_token(user)
 
     async def _get_organization_by_email(self, email: str):
         result = await self.db.execute(select(Organization).where(Organization.email == email))
         return result.scalar_one_or_none()
 
     async def _get_user_by_email(self, email: str):
-        result = await self.db.execute(select(User).where(User.email == email))
+        result = await self.db.execute(
+            select(User)
+            .options(selectinload(User.organization))
+            .where(User.email == email)
+        )
         return result.scalar_one_or_none()
 
     async def _organization_has_admin(self, organization_id):
@@ -147,18 +152,42 @@ class AuthService:
         )
         return result.scalars().first()
 
-    def _create_access_token(self, user: User):
+    async def _create_access_token(self, user: User):
         token = create_signed_token(
             {
                 "purpose": "access",
                 "sub": str(user.id),
                 "email": user.email,
-                "organization_id": str(user.organization_id),
+                "organization_id": str(user.organization_id) if user.organization_id else None,
                 "role": user.role,
             },
             timedelta(hours=12),
         )
-        return {"access_token": token, "token_type": "bearer"}
+        organization = await self.db.get(Organization, user.organization_id) if user.organization_id else None
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "role": user.role,
+                "organization_id": user.organization_id,
+                "organization": self._serialize_organization(organization),
+            },
+        }
+
+    def _serialize_organization(self, organization: Organization | None):
+        if not organization:
+            return None
+
+        return {
+            "id": organization.id,
+            "name": organization.name,
+            "email": organization.email,
+            "website": organization.website,
+            "description": organization.description,
+        }
 
     def _is_expired(self, value: datetime) -> bool:
         if value.tzinfo is None:
