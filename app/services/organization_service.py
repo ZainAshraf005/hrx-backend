@@ -1,15 +1,18 @@
 from typing import Optional
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import FRONTEND_URL
 from app.models import Organization
+from app.models.organization.organization_invite import OrganizationInvite
 from app.schemas.organization_application import OrganizationApplicationCreate
 from app.schemas.organization_schema import OrganizationCreate, OrganizationUpdate
 from app.models.organization.organization_application import OrganizationApplication, Status
 from app.services.email_service import EmailService
-from app.core.security import normalize_email
+from app.core.security import create_signed_token, normalize_email
 
 class OrganizationService:
     def __init__(self, db: AsyncSession, email_service: EmailService):
@@ -102,6 +105,7 @@ class OrganizationService:
             raise HTTPException(400, "Application already processed")
         application.status = status
         should_send_approval_email = False
+        setup_token = None
         if application.status == Status.APPROVED:
             organization = Organization(
                 email=normalize_email(application.email),
@@ -110,6 +114,26 @@ class OrganizationService:
                 website=application.website
             )
             self.db.add(organization)
+            await self.db.flush()
+
+            invite = OrganizationInvite(
+                email=normalize_email(application.email),
+                organization_id=organization.id,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+                role="org_admin",
+            )
+            self.db.add(invite)
+            await self.db.flush()
+
+            setup_token = create_signed_token(
+                {
+                    "purpose": "org_admin_setup",
+                    "invite_id": str(invite.id),
+                    "email": invite.email,
+                    "organization_id": str(invite.organization_id),
+                },
+                timedelta(days=7),
+            )
             should_send_approval_email = True
             await self.db.delete(application)
 
@@ -117,5 +141,5 @@ class OrganizationService:
         if not should_send_approval_email:
             await self.db.refresh(application)
         if should_send_approval_email:
-            await self.email_service.send_approval_email(application.email, application.org_name)
+            await self.email_service.send_approval_email(application.email, application.org_name, setup_token, FRONTEND_URL)
         return application

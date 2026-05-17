@@ -37,14 +37,19 @@ class EmailService:
         """
         await self.send_email(email, "Your OTP Code", html)
 
-    async def send_approval_email(self, email: str, org_name: str):
+    async def send_approval_email(self, email: str, org_name: str, setup_token: str, frontend_url: str):
+        setup_url = f"{frontend_url.rstrip('/')}/org-admin/set-password?token={setup_token}"
         html = f"""
         <div style="font-family: Arial, sans-serif;">
             <h2>Organization Approved</h2>
 
             <p>Good news — your organization <b>{org_name}</b> has been approved.</p>
 
-            <p>You can now proceed to login and set up your admin account.</p>
+            <p>Use the link below to set your admin password.</p>
+
+            <p><a href="{setup_url}">Set your password</a></p>
+
+            <p>This link will expire in 7 days.</p>
 
             <hr/>
 

@@ -4,26 +4,12 @@ from app.dependencies.services import get_auth_service
 from app.schemas.auth_schema import (
     LoginRequest,
     EmployeeSetPasswordRequest,
-    RequestOtpRequest,
-    RequestOtpResponse,
     SetPasswordRequest,
     TokenResponse,
-    VerifyOtpRequest,
-    VerifyOtpResponse,
 )
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-@router.post("/org-admin/request-otp", response_model=RequestOtpResponse)
-async def request_org_admin_otp(payload: RequestOtpRequest, service: AuthService = Depends(get_auth_service)):
-    return await service.request_org_admin_otp(payload.email)
-
-
-@router.post("/org-admin/verify-otp", response_model=VerifyOtpResponse)
-async def verify_org_admin_otp(payload: VerifyOtpRequest, service: AuthService = Depends(get_auth_service)):
-    return await service.verify_org_admin_otp(payload.email, payload.otp)
 
 
 @router.post("/org-admin/set-password", response_model=TokenResponse)
