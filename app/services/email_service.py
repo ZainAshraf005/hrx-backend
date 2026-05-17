@@ -37,6 +37,26 @@ class EmailService:
         """
         await self.send_email(email, "Your OTP Code", html)
 
+    async def send_password_reset_otp(self, email: str, otp: str):
+        html = f"""
+        <div style="font-family: Arial, sans-serif;">
+            <h2>Password Reset</h2>
+
+            <p>Use the OTP below to reset your password.</p>
+
+            <h1>{otp}</h1>
+
+            <p>This OTP will expire in 10 minutes.</p>
+
+            <hr/>
+
+            <p style="color: gray; font-size: 12px;">
+                If you didn't request this, you can ignore this email.
+            </p>
+        </div>
+        """
+        await self.send_email(email, "Reset your password", html)
+
     async def send_approval_email(self, email: str, org_name: str, setup_token: str, frontend_url: str):
         setup_url = f"{frontend_url.rstrip('/')}/org-admin/set-password?token={setup_token}"
         html = f"""

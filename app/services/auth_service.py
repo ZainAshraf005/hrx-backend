@@ -9,13 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import (
     create_signed_token,
     decode_signed_token,
+    generate_otp,
+    hash_otp,
     hash_password,
     normalize_email,
+    verify_otp,
     verify_password,
 )
 from app.models.organization.organization import Organization
 from app.models.organization.organization_invite import OrganizationInvite
 from app.models.employee.employee_model import Employee
+from app.models.user.password_reset_otp import PasswordResetOtp
 from app.models.user.user_model import User
 from app.services.email_service import EmailService
 
@@ -73,6 +77,55 @@ class AuthService:
             raise HTTPException(status_code=401, detail="Invalid email or password")
         return await self._create_access_token(user)
 
+    async def request_forgot_password_otp(self, email: str):
+        normalized_email = normalize_email(email)
+        user = await self._get_user_by_email(normalized_email)
+        self._validate_password_reset_user(user)
+
+        active_resets = await self.db.execute(
+            select(PasswordResetOtp).where(
+                PasswordResetOtp.user_id == user.id,
+                PasswordResetOtp.email == normalized_email,
+                PasswordResetOtp.is_used.is_(False),
+            )
+        )
+        for reset in active_resets.scalars().all():
+            reset.is_used = True
+
+        otp = generate_otp()
+        reset = PasswordResetOtp(
+            user_id=user.id,
+            email=normalized_email,
+            otp_hash=hash_otp(otp),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        )
+        self.db.add(reset)
+        await self.db.commit()
+
+        await self.email_service.send_password_reset_otp(normalized_email, otp)
+        return {"message": "OTP sent"}
+
+    async def reset_forgot_password(self, email: str, token: str, password: str):
+        normalized_email = normalize_email(email)
+        user = await self._get_user_by_email(normalized_email)
+        self._validate_password_reset_user(user)
+
+        reset = await self._get_latest_active_password_reset(normalized_email)
+        if (
+            not reset
+            or reset.user_id != user.id
+            or self._is_expired(reset.expires_at)
+            or not verify_otp(token, reset.otp_hash)
+        ):
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+        user.password_hash = hash_password(password)
+        reset.is_used = True
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        return await self._create_access_token(user)
+
     async def set_employee_password(self, setup_token: str, password: str):
         payload = decode_signed_token(setup_token)
         if not payload or payload.get("purpose") != "employee_setup":
@@ -127,6 +180,21 @@ class AuthService:
             select(User).where(User.organization_id == organization_id, User.role == "org_admin")
         )
         return result.scalar_one_or_none() is not None
+
+    async def _get_latest_active_password_reset(self, email: str):
+        result = await self.db.execute(
+            select(PasswordResetOtp)
+            .where(PasswordResetOtp.email == email, PasswordResetOtp.is_used.is_(False))
+            .order_by(PasswordResetOtp.created_at.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    def _validate_password_reset_user(self, user: User | None):
+        if not user or not user.is_active or not user.is_verified or not user.password_hash:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.role == "superadmin":
+            raise HTTPException(status_code=403, detail="Password reset is not allowed for superadmin")
 
     async def _create_access_token(self, user: User):
         token = create_signed_token(
