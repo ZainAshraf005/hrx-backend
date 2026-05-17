@@ -69,7 +69,7 @@ class AuthService:
         await self.db.commit()
         await self.db.refresh(user)
 
-        return await self._create_access_token(user)
+        return {"message": "Password set successfully"}
 
     async def login(self, email: str, password: str):
         user = await self._get_user_by_email(normalize_email(email))
@@ -122,9 +122,8 @@ class AuthService:
         user.password_hash = hash_password(password)
         reset.is_used = True
         await self.db.commit()
-        await self.db.refresh(user)
 
-        return await self._create_access_token(user)
+        return {"message": "Password reset successfully"}
 
     async def set_employee_password(self, setup_token: str, password: str):
         payload = decode_signed_token(setup_token)
@@ -159,9 +158,8 @@ class AuthService:
         user.is_verified = True
 
         await self.db.commit()
-        await self.db.refresh(user)
 
-        return await self._create_access_token(user)
+        return {"message": "Password set successfully"}
 
     async def _get_organization_by_email(self, email: str):
         result = await self.db.execute(select(Organization).where(Organization.email == email))

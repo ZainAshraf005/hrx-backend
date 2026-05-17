@@ -1,32 +1,28 @@
 from typing import Callable
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import AUTH_COOKIE_NAME
 from app.core.security import decode_signed_token
 from app.dependencies.db import get_db
 from app.models.user.user_model import User
 
 
 async def get_current_user(
-    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
-        headers={"WWW-Authenticate": "Bearer"},
     )
 
-    if not authorization:
+    if not access_token:
         raise credentials_exception
 
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise credentials_exception
-
-    payload = decode_signed_token(token)
+    payload = decode_signed_token(access_token)
     if not payload or payload.get("purpose") != "access":
         raise credentials_exception
 
