@@ -14,12 +14,16 @@ from app.models.organization.organization_application import OrganizationApplica
 from app.services.email_service import EmailService
 from app.core.security import create_signed_token, normalize_email
 
+
 class OrganizationService:
     def __init__(self, db: AsyncSession, email_service: EmailService):
         self.db = db
         self.email_service = email_service
 
     async def create_organization(self, data: OrganizationCreate) -> Organization:
+        existing = await self.db.execute(select(Organization).where(Organization.email == data.email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Organization already exists")
         # Logic to create an organization in the database
         organization = Organization(
             name=data.name,
@@ -27,6 +31,7 @@ class OrganizationService:
             email=normalize_email(str(data.email)),
             website=data.website
         )
+
         self.db.add(organization)
         await self.db.commit()
         await self.db.refresh(organization)
@@ -83,6 +88,11 @@ class OrganizationService:
         return result.scalar_one_or_none()
 
     async def create_application(self, data: OrganizationApplicationCreate):
+        existing = await self.db.execute(
+            select(OrganizationApplication).where(OrganizationApplication.email == data.email))
+        existing_organization = await self.db.execute(select(Organization).where(Organization.email == data.email))
+        if existing.scalar_one_or_none() or existing_organization.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Application already exists")
         application = OrganizationApplication(
             org_name=data.org_name,
             email=normalize_email(str(data.email)),
@@ -141,5 +151,6 @@ class OrganizationService:
         if not should_send_approval_email:
             await self.db.refresh(application)
         if should_send_approval_email:
-            await self.email_service.send_approval_email(application.email, application.org_name, setup_token, FRONTEND_URL)
+            await self.email_service.send_approval_email(application.email, application.org_name, setup_token,
+                                                         FRONTEND_URL)
         return application
