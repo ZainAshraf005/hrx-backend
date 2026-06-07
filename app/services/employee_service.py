@@ -128,5 +128,5 @@ class EmployeeService:
 
     def _require_org_admin_organization(self, current_user: User) -> UUID:
         if current_user.role != "org_admin" or not current_user.organization_id:
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+            raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id

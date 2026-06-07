@@ -43,7 +43,7 @@ def require_roles(*roles: str) -> Callable:
         if current_user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions",
+                detail="Not Authorized",
             )
         return current_user
 
@@ -62,5 +62,5 @@ async def require_superadmin_or_own_organization(
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Not enough permissions",
+        detail="Not Authorized",
     )

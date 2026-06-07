@@ -1,5 +1,6 @@
-import uuid
 from sqlalchemy import Column, String
+from sqlalchemy.orm import relationship
+
 from app.models.base_model import BaseModel
 
 
@@ -11,3 +12,4 @@ class Organization(BaseModel):
     website = Column(String, nullable=True)
     description = Column(String, nullable=True)
 
+    jobs = relationship("Job", back_populates="organization", cascade="all, delete-orphan")
