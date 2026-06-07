@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import FRONTEND_URL
 from app.models import Organization
 from app.models.organization.organization_invite import OrganizationInvite
+from app.models.user.user_model import User
 from app.schemas.organization_application import OrganizationApplicationCreate
 from app.schemas.organization_schema import OrganizationCreate, OrganizationUpdate
 from app.models.organization.organization_application import OrganizationApplication, Status
@@ -88,6 +89,11 @@ class OrganizationService:
         return result.scalar_one_or_none()
 
     async def create_application(self, data: OrganizationApplicationCreate):
+        existing_user = await self.db.execute(
+            select(User).where(User.email == data.email)
+        )
+        if existing_user.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="User with this email already exists")
         existing = await self.db.execute(
             select(OrganizationApplication).where(OrganizationApplication.email == data.email))
         existing_organization = await self.db.execute(select(Organization).where(Organization.email == data.email))
