@@ -21,6 +21,7 @@ from app.models.organization.organization_invite import OrganizationInvite
 from app.models.employee.employee_model import Employee
 from app.models.user.password_reset_otp import PasswordResetOtp
 from app.models.user.user_model import User
+from app.schemas.auth_schema import ProfileOrganizationUpdateRequest, ProfileUpdateRequest
 from app.services.email_service import EmailService
 
 
@@ -161,8 +162,88 @@ class AuthService:
 
         return {"message": "Password set successfully"}
 
+    async def get_profile(self, current_user: User):
+        user = await self._get_user_by_id(current_user.id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return self._serialize_user(user)
+
+    async def update_profile(self, current_user: User, data: ProfileUpdateRequest):
+        user = await self._get_user_by_id(current_user.id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.role == "superadmin":
+            raise HTTPException(status_code=403, detail="Profile update is not allowed for superadmin")
+
+        if data.email is not None:
+            email = normalize_email(str(data.email))
+            if email != user.email:
+                existing_user = await self._get_user_by_email(email)
+                if existing_user and existing_user.id != user.id:
+                    raise HTTPException(status_code=400, detail="Email already exists")
+                user.email = email
+
+        if data.organization is not None:
+            if user.role != "org_admin":
+                raise HTTPException(status_code=403, detail="Organization update is only allowed for org admin")
+            if not user.organization:
+                raise HTTPException(status_code=400, detail="Organization not found")
+            await self._apply_organization_profile_update(user.organization, data.organization)
+
+        employee_fields = {"first_name", "last_name", "phone"}
+        if employee_fields.intersection(data.model_fields_set):
+            if user.role not in {"employee", "hr_manager"}:
+                raise HTTPException(status_code=403, detail="Employee profile update is only allowed for employees")
+            if not user.employee:
+                raise HTTPException(status_code=400, detail="Employee profile not found")
+            if data.first_name is not None:
+                user.employee.first_name = data.first_name
+            if data.last_name is not None:
+                user.employee.last_name = data.last_name
+            if "phone" in data.model_fields_set:
+                user.employee.phone = data.phone
+
+        await self.db.commit()
+        return await self.get_profile(user)
+
+    async def _apply_organization_profile_update(
+        self,
+        organization: Organization,
+        data: ProfileOrganizationUpdateRequest,
+    ):
+        if data.name is not None and data.name != organization.name:
+            existing_organization = await self._get_organization_by_name(data.name)
+            if existing_organization and existing_organization.id != organization.id:
+                raise HTTPException(status_code=400, detail="Organization name already exists")
+            organization.name = data.name
+
+        if data.email is not None:
+            email = normalize_email(str(data.email))
+            if email != organization.email:
+                existing_organization = await self._get_organization_by_email(email)
+                if existing_organization and existing_organization.id != organization.id:
+                    raise HTTPException(status_code=400, detail="Organization email already exists")
+                organization.email = email
+
+        if "website" in data.model_fields_set:
+            organization.website = data.website
+        if "description" in data.model_fields_set:
+            organization.description = data.description
+
     async def _get_organization_by_email(self, email: str):
         result = await self.db.execute(select(Organization).where(Organization.email == email))
+        return result.scalar_one_or_none()
+
+    async def _get_organization_by_name(self, name: str):
+        result = await self.db.execute(select(Organization).where(Organization.name == name))
+        return result.scalar_one_or_none()
+
+    async def _get_user_by_id(self, user_id: UUID):
+        result = await self.db.execute(
+            select(User)
+            .options(selectinload(User.organization), selectinload(User.employee))
+            .where(User.id == user_id)
+        )
         return result.scalar_one_or_none()
 
     async def _get_user_by_email(self, email: str):
@@ -205,25 +286,22 @@ class AuthService:
             },
             timedelta(hours=12),
         )
-        organization = await self.db.get(Organization, user.organization_id) if user.organization_id else None
-        employee = await self._get_employee_by_user_id(user.id) if user.role in {"employee", "hr_manager"} else None
 
         return {
             "access_token": token,
             "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "role": user.role,
-                "organization_id": user.organization_id,
-                "organization": self._serialize_organization(organization),
-                "employee": self._serialize_employee(employee),
-            },
+            "user": self._serialize_user(user),
         }
 
-    async def _get_employee_by_user_id(self, user_id: UUID):
-        result = await self.db.execute(select(Employee).where(Employee.user_id == user_id))
-        return result.scalar_one_or_none()
+    def _serialize_user(self, user: User):
+        return {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "organization_id": user.organization_id,
+            "organization": self._serialize_organization(user.organization),
+            "employee": self._serialize_employee(user.employee),
+        }
 
     def _serialize_organization(self, organization: Organization | None):
         if not organization:

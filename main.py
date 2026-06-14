@@ -7,6 +7,7 @@ from app.api.email_test_controller import router as email_test_router
 from app.api.auth_controller import router as auth_router
 from app.api.employee_controller import router as employee_router
 from app.api.job_controller import router as job_router
+from app.api.profile_controller import router as profile_router
 
 
 # -------------------------
@@ -49,3 +50,4 @@ app.include_router(email_test_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(employee_router, prefix="/api")
 app.include_router(job_router, prefix="/api")
+app.include_router(profile_router, prefix="/api")

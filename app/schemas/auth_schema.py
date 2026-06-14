@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class SetPasswordRequest(BaseModel):
@@ -34,6 +34,25 @@ class ResetPasswordRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ProfileOrganizationUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    email: EmailStr | None = None
+    website: str | None = None
+    description: str | None = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    organization: ProfileOrganizationUpdateRequest | None = None
 
 
 class AuthOrganizationResponse(BaseModel):
