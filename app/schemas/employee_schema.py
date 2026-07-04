@@ -4,8 +4,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
+from app.models.enums import UserRole
 
-EmployeeRole = Literal["employee", "hr_manager"]
+EmployeeRole = Literal[UserRole.EMPLOYEE, UserRole.HR_MANAGER]
 
 
 class EmployeeCreate(BaseModel):
@@ -14,7 +15,7 @@ class EmployeeCreate(BaseModel):
     last_name: str
     phone: str | None = None
     designation: str
-    role: EmployeeRole = "employee"
+    role: EmployeeRole = UserRole.EMPLOYEE
 
 
 class EmployeeUpdate(BaseModel):
@@ -31,7 +32,7 @@ class EmployeeUserResponse(BaseModel):
 
     id: UUID
     email: EmailStr
-    role: str
+    role: EmployeeRole
     is_active: bool
     is_verified: bool
 

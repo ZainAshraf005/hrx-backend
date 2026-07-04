@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import FRONTEND_URL
 from app.core.security import create_signed_token, normalize_email
+from app.models.enums import UserRole
 from app.models.employee.employee_model import Employee
 from app.models.user.user_model import User
 from app.schemas.employee_schema import EmployeeCreate, EmployeeUpdate
@@ -127,6 +128,6 @@ class EmployeeService:
         )
 
     def _require_org_admin_organization(self, current_user: User) -> UUID:
-        if current_user.role != "org_admin" or not current_user.organization_id:
+        if current_user.role != UserRole.ORG_ADMIN or not current_user.organization_id:
             raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id

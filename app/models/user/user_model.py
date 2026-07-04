@@ -1,9 +1,10 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, ForeignKey
+from sqlalchemy import Column, String, Boolean, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base_model import BaseModel
+from app.models.enums import UserRole, enum_values
 
 
 class User(BaseModel):
@@ -18,7 +19,11 @@ class User(BaseModel):
         nullable=True
     )
 
-    role = Column(String, nullable=False, default="employee")
+    role = Column(
+        SAEnum(UserRole, values_callable=enum_values, name="user_role"),
+        nullable=False,
+        default=UserRole.EMPLOYEE,
+    )
 
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)

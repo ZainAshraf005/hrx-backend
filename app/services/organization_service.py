@@ -6,6 +6,7 @@ from sqlalchemy import select
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import FRONTEND_URL
+from app.models.enums import UserRole
 from app.models import Organization
 from app.models.organization.organization_invite import OrganizationInvite
 from app.models.user.user_model import User
@@ -136,7 +137,7 @@ class OrganizationService:
                 email=normalize_email(application.email),
                 organization_id=organization.id,
                 expires_at=datetime.now(timezone.utc) + timedelta(days=7),
-                role="org_admin",
+                role=UserRole.ORG_ADMIN,
             )
             self.db.add(invite)
             await self.db.flush()

@@ -1,4 +1,13 @@
 from app.models.employee.employee_model import Employee
+from app.models.enums import (
+    JobApplicationStatus,
+    JobEmploymentType,
+    JobStatus,
+    JobWorkplaceType,
+    SalaryPeriod,
+    UserRole,
+)
+from app.models.job.job_application_model import JobApplication
 from app.models.job.job_model import Job
 from app.models.organization.organization import Organization
 from app.models.organization.organization_application import OrganizationApplication

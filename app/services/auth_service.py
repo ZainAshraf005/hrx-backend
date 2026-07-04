@@ -16,6 +16,7 @@ from app.core.security import (
     verify_otp,
     verify_password,
 )
+from app.models.enums import UserRole
 from app.models.organization.organization import Organization
 from app.models.organization.organization_invite import OrganizationInvite
 from app.models.employee.employee_model import Employee
@@ -61,7 +62,7 @@ class AuthService:
             email=invite.email,
             password_hash=hash_password(password),
             organization_id=invite.organization_id,
-            role="org_admin",
+            role=UserRole.ORG_ADMIN,
             is_active=True,
             is_verified=True,
         )
@@ -172,7 +173,7 @@ class AuthService:
         user = await self._get_user_by_id(current_user.id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role == "superadmin":
+        if user.role == UserRole.SUPERADMIN:
             raise HTTPException(status_code=403, detail="Profile update is not allowed for superadmin")
 
         if data.email is not None:
@@ -184,7 +185,7 @@ class AuthService:
                 user.email = email
 
         if data.organization is not None:
-            if user.role != "org_admin":
+            if user.role != UserRole.ORG_ADMIN:
                 raise HTTPException(status_code=403, detail="Organization update is only allowed for org admin")
             if not user.organization:
                 raise HTTPException(status_code=400, detail="Organization not found")
@@ -192,7 +193,7 @@ class AuthService:
 
         employee_fields = {"first_name", "last_name", "phone"}
         if employee_fields.intersection(data.model_fields_set):
-            if user.role not in {"employee", "hr_manager"}:
+            if user.role not in {UserRole.EMPLOYEE, UserRole.HR_MANAGER}:
                 raise HTTPException(status_code=403, detail="Employee profile update is only allowed for employees")
             if not user.employee:
                 raise HTTPException(status_code=400, detail="Employee profile not found")
@@ -256,7 +257,7 @@ class AuthService:
 
     async def _organization_has_admin(self, organization_id):
         result = await self.db.execute(
-            select(User).where(User.organization_id == organization_id, User.role == "org_admin")
+            select(User).where(User.organization_id == organization_id, User.role == UserRole.ORG_ADMIN)
         )
         return result.scalar_one_or_none() is not None
 
@@ -272,7 +273,7 @@ class AuthService:
     def _validate_password_reset_user(self, user: User | None):
         if not user or not user.is_active or not user.is_verified or not user.password_hash:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role == "superadmin":
+        if user.role == UserRole.SUPERADMIN:
             raise HTTPException(status_code=403, detail="Password reset is not allowed for superadmin")
 
     async def _create_access_token(self, user: User):

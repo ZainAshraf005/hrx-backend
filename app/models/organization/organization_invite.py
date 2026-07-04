@@ -1,7 +1,8 @@
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, String, DateTime, Boolean, Enum as SAEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base_model import BaseModel
+from app.models.enums import UserRole, enum_values
 
 
 class OrganizationInvite(BaseModel):
@@ -19,4 +20,8 @@ class OrganizationInvite(BaseModel):
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
     # optional but useful
-    role = Column(String, nullable=False, default="org_admin")
+    role = Column(
+        SAEnum(UserRole, values_callable=enum_values, name="user_role"),
+        nullable=False,
+        default=UserRole.ORG_ADMIN,
+    )

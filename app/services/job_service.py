@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job.job_model import Job
+from app.models.enums import JobStatus, UserRole
 from app.models.user.user_model import User
 from app.schemas.job_schema import JobCreate, JobUpdate
 
@@ -127,15 +128,15 @@ class JobService:
     def _public_jobs_query(self):
         return (
             select(Job)
-            .where(Job.is_active.is_(True), Job.status == "open")
+            .where(Job.is_active.is_(True), Job.status == JobStatus.OPEN)
             .order_by(Job.created_at.desc())
         )
 
     def _apply_status_timestamps(self, job: Job, status: str):
         now = datetime.now(timezone.utc)
-        if status == "open" and job.published_at is None:
+        if status == JobStatus.OPEN and job.published_at is None:
             job.published_at = now
-        if status == "closed" and job.closed_at is None:
+        if status == JobStatus.CLOSED and job.closed_at is None:
             job.closed_at = now
 
     def _validate_salary_range(self, salary_min: int | None, salary_max: int | None):
@@ -146,6 +147,6 @@ class JobService:
             )
 
     def _require_org_admin_organization(self, current_user: User) -> UUID:
-        if current_user.role not in ("org_admin", "hr_manager") or not current_user.organization_id:
+        if current_user.role not in (UserRole.ORG_ADMIN, UserRole.HR_MANAGER) or not current_user.organization_id:
             raise HTTPException(status_code=403, detail="Not enough permissions")
         return current_user.organization_id

@@ -1,14 +1,19 @@
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.enums import (
+    JobEmploymentType,
+    JobStatus as JobStatusEnum,
+    JobWorkplaceType,
+    SalaryPeriod as SalaryPeriodEnum,
+)
 
-EmploymentType = Literal["full_time", "part_time", "contract", "internship", "temporary"]
-WorkplaceType = Literal["onsite", "remote", "hybrid"]
-JobStatus = Literal["draft", "open", "closed"]
-SalaryPeriod = Literal["hourly", "monthly", "yearly"]
+EmploymentType = JobEmploymentType
+WorkplaceType = JobWorkplaceType
+JobStatus = JobStatusEnum
+SalaryPeriod = SalaryPeriodEnum
 
 
 class JobBase(BaseModel):
@@ -16,13 +21,13 @@ class JobBase(BaseModel):
     description: str
     department: str | None = None
     location: str | None = None
-    employment_type: EmploymentType = "full_time"
-    workplace_type: WorkplaceType = "onsite"
-    status: JobStatus = "draft"
+    employment_type: EmploymentType = JobEmploymentType.FULL_TIME
+    workplace_type: WorkplaceType = JobWorkplaceType.ONSITE
+    status: JobStatus = JobStatusEnum.DRAFT
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = "USD"
-    salary_period: SalaryPeriod | None = "yearly"
+    salary_period: SalaryPeriod | None = SalaryPeriodEnum.YEARLY
     experience_level: str | None = None
     requirements: str | None = None
     responsibilities: str | None = None
@@ -61,13 +66,13 @@ class JobResponse(BaseModel):
     description: str
     department: str | None = None
     location: str | None = None
-    employment_type: str
-    workplace_type: str
-    status: str
+    employment_type: EmploymentType
+    workplace_type: WorkplaceType
+    status: JobStatus
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = None
-    salary_period: str | None = None
+    salary_period: SalaryPeriod | None = None
     experience_level: str | None = None
     requirements: str | None = None
     responsibilities: str | None = None

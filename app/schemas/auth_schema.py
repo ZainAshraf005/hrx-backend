@@ -2,6 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.models.enums import UserRole
+
 
 class SetPasswordRequest(BaseModel):
     setup_token: str
@@ -76,7 +78,7 @@ class AuthEmployeeResponse(BaseModel):
 class AuthUserResponse(BaseModel):
     id: UUID
     email: EmailStr
-    role: str
+    role: UserRole
     organization_id: UUID | None = None
     organization: AuthOrganizationResponse | None = None
     employee: AuthEmployeeResponse | None = None
