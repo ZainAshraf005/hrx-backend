@@ -1,8 +1,9 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
+from app.core.frontend_url import get_frontend_url_from_request
 from app.dependencies.auth import require_roles
 from app.dependencies.services import get_employee_service
 from app.models.user.user_model import User
@@ -16,10 +17,12 @@ router = APIRouter(prefix="/employees", tags=["employees"])
 @router.post("/", response_model=EmployeeResponse)
 async def create_employee(
     payload: EmployeeCreate,
+    request: Request,
     current_user: User = Depends(require_roles("org_admin")),
     service: EmployeeService = Depends(get_employee_service),
 ):
-    return await service.create_employee(payload, current_user)
+    frontend_url = get_frontend_url_from_request(request)
+    return await service.create_employee(payload, current_user, frontend_url)
 
 
 @router.get("/", response_model=List[EmployeeResponse])

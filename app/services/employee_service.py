@@ -20,7 +20,7 @@ class EmployeeService:
         self.db = db
         self.email_service = email_service
 
-    async def create_employee(self, data: EmployeeCreate, current_user: User):
+    async def create_employee(self, data: EmployeeCreate, current_user: User, frontend_url: str = FRONTEND_URL):
         organization_id = self._require_org_admin_organization(current_user)
         email = normalize_email(str(data.email))
 
@@ -51,7 +51,7 @@ class EmployeeService:
         await self.db.refresh(employee)
 
         setup_token = self._create_employee_setup_token(user, employee)
-        await self.email_service.send_employee_invite(email, data.first_name, setup_token, FRONTEND_URL)
+        await self.email_service.send_employee_invite(email, data.first_name, setup_token, frontend_url)
 
         return await self.get_employee(employee.id, current_user)
 

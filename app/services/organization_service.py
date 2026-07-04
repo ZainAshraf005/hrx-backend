@@ -111,7 +111,7 @@ class OrganizationService:
         await self.db.refresh(application)
         return application
 
-    async def update_application_status(self, application_id: UUID, status: Status):
+    async def update_application_status(self, application_id: UUID, status: Status, frontend_url: str = FRONTEND_URL):
         result = await self.db.execute(
             select(OrganizationApplication).where(OrganizationApplication.id == application_id))
         application: Optional[OrganizationApplication] = result.scalar_one_or_none()
@@ -159,5 +159,5 @@ class OrganizationService:
             await self.db.refresh(application)
         if should_send_approval_email:
             await self.email_service.send_approval_email(application.email, application.org_name, setup_token,
-                                                         FRONTEND_URL)
+                                                         frontend_url)
         return application

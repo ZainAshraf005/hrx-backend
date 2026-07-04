@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List
 from uuid import UUID
+from app.core.frontend_url import get_frontend_url_from_request
 from app.dependencies.auth import require_roles, require_superadmin_or_own_organization
 from app.dependencies.services import get_organization_service
 from app.models.organization.organization_application import Status
@@ -85,9 +86,11 @@ async def get_application(
 @router.put("/applications/{application_id}/approve", response_model=OrganizationApplicationResponse)
 async def approve_application(
         application_id: UUID,
+        request: Request,
         current_user: User = Depends(require_roles("superadmin")),
         service: OrganizationService = Depends(get_organization_service)):
-    return await service.update_application_status(application_id, Status.APPROVED)
+    frontend_url = get_frontend_url_from_request(request)
+    return await service.update_application_status(application_id, Status.APPROVED, frontend_url)
 
 
 @router.put("/applications/{application_id}/discard", response_model=OrganizationApplicationResponse)
