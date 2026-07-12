@@ -42,6 +42,17 @@ app.add_middleware(
 )
 
 
+@app.get("/", tags=["health"])
+async def root():
+    return {
+        "name": "HRX API",
+        "version": app.version,
+        "description": "Backend API for HRX hiring and recruitment workflows.",
+        "docs": "/docs",
+        "message": "Visit /docs to explore available API routes.",
+    }
+
+
 # -------------------------
 # Routes registration
 # -------------------------
