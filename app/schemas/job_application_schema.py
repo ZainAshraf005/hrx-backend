@@ -3,9 +3,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models.enums import JobApplicationStatus as JobApplicationStatusEnum
+from app.models.enums import (
+    CandidateRankingRecommendation as CandidateRankingRecommendationEnum,
+    CandidateRankingStatus as CandidateRankingStatusEnum,
+    JobApplicationStatus as JobApplicationStatusEnum,
+)
 
 JobApplicationStatus = JobApplicationStatusEnum
+CandidateRankingRecommendation = CandidateRankingRecommendationEnum
+CandidateRankingStatus = CandidateRankingStatusEnum
 
 
 class ResumeWorkExperience(BaseModel):
@@ -48,7 +54,16 @@ class ParsedResume(BaseModel):
 
 class ResumeParseResponse(BaseModel):
     job_id: UUID
+    resume_text: str
     parsed_resume: ParsedResume
+
+
+class CandidateRankingResult(BaseModel):
+    score: int = Field(ge=0, le=100)
+    recommendation: CandidateRankingRecommendation
+    rationale: str
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
 
 
 class JobApplicationCreate(BaseModel):
@@ -59,6 +74,7 @@ class JobApplicationCreate(BaseModel):
     linkedin_url: str | None = None
     portfolio_url: str | None = None
     summary: str | None = None
+    resume_text: str | None = None
     parsed_resume: ParsedResume | None = None
     cover_letter: str | None = None
 
@@ -73,15 +89,16 @@ class JobApplicationResponse(BaseModel):
     id: UUID
     job_id: UUID
     organization_id: UUID
-    candidate_name: str
-    candidate_email: EmailStr
-    candidate_phone: str | None = None
-    candidate_location: str | None = None
-    linkedin_url: str | None = None
-    portfolio_url: str | None = None
-    summary: str | None = None
     parsed_resume: ParsedResume | None = None
     cover_letter: str | None = None
     status: JobApplicationStatus
+    ranking_score: int | None = None
+    ranking_recommendation: CandidateRankingRecommendation | None = None
+    ranking_rationale: str | None = None
+    ranking_strengths: list[str] | None = None
+    ranking_gaps: list[str] | None = None
+    ranking_status: CandidateRankingStatus
+    ranking_error: str | None = None
+    ranked_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

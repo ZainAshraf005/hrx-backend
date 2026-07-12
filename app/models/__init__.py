@@ -1,5 +1,7 @@
 from app.models.employee.employee_model import Employee
 from app.models.enums import (
+    CandidateRankingRecommendation,
+    CandidateRankingStatus,
     JobApplicationStatus,
     JobEmploymentType,
     JobStatus,

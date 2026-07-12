@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+import re
 
 from fastapi import HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
@@ -8,6 +9,12 @@ from app.core.config import RESUME_ALLOWED_EXTENSIONS, RESUME_MAX_UPLOAD_BYTES
 
 
 RESUME_READ_CHUNK_BYTES = 1024 * 1024
+CHARACTER_SPACED_PATTERN = re.compile(r"[A-Za-z0-9](?:\s+[A-Za-z0-9]){2,}")
+CHARACTER_SPACED_SEPARATOR_PLACEHOLDERS = {
+    "__RESUME_PIPE_SEPARATOR__": "|",
+    "__RESUME_EM_DASH_SEPARATOR__": "\u2014",
+    "__RESUME_EN_DASH_SEPARATOR__": "\u2013",
+}
 
 
 class ResumeService:
@@ -81,5 +88,19 @@ class ResumeService:
             raise HTTPException(status_code=400, detail="Could not read DOCX resume") from exc
 
     def _normalize_text(self, text: str) -> str:
-        lines = [line.strip() for line in text.splitlines()]
+        lines = [self._normalize_line(line.strip()) for line in text.splitlines()]
         return "\n".join(line for line in lines if line)
+
+    def _normalize_line(self, line: str) -> str:
+        if not CHARACTER_SPACED_PATTERN.search(line):
+            return re.sub(r"[ \t]+", " ", line)
+
+        line = re.sub(r"\s+\|\s+", "  __RESUME_PIPE_SEPARATOR__  ", line)
+        line = re.sub(r"\s+\u2014\s+", "  __RESUME_EM_DASH_SEPARATOR__  ", line)
+        line = re.sub(r"\s+\u2013\s+", "  __RESUME_EN_DASH_SEPARATOR__  ", line)
+
+        parts = re.split(r"\s{2,}", line)
+        normalized = " ".join("".join(part.split()) for part in parts if part.strip())
+        for placeholder, separator in CHARACTER_SPACED_SEPARATOR_PLACEHOLDERS.items():
+            normalized = normalized.replace(placeholder, separator)
+        return normalized

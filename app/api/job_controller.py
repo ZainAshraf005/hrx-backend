@@ -1,7 +1,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 
 from app.dependencies.auth import require_roles
 from app.dependencies.services import get_job_application_service, get_job_service
@@ -13,7 +13,7 @@ from app.schemas.job_application_schema import (
     ResumeParseResponse,
 )
 from app.schemas.job_schema import JobCreate, JobResponse, JobStatus, JobUpdate
-from app.services.job_application_service import JobApplicationService
+from app.services.job_application_service import JobApplicationService, rerank_job_applications_for_job
 from app.services.job_service import JobService
 
 
@@ -49,10 +49,11 @@ async def list_jobs_by_organization(
 @router.get("/{job_id}/applications", response_model=List[JobApplicationResponse])
 async def list_job_applications(
     job_id: UUID,
+    sort: str = "rank",
     current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobApplicationService = Depends(get_job_application_service),
 ):
-    return await service.get_applications_for_job(job_id, current_user)
+    return await service.get_applications_for_job(job_id, current_user, sort)
 
 
 @router.post("/{job_id}/applications/parse-resume", response_model=ResumeParseResponse)
@@ -104,10 +105,13 @@ async def get_job(
 async def update_job(
     job_id: UUID,
     payload: JobUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobService = Depends(get_job_service),
 ):
-    return await service.update_job(job_id, payload, current_user)
+    job = await service.update_job(job_id, payload, current_user)
+    background_tasks.add_task(rerank_job_applications_for_job, job.id)
+    return job
 
 
 @router.delete("/{job_id}", response_model=JobResponse)

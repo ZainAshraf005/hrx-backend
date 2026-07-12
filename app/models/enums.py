@@ -44,3 +44,15 @@ class JobApplicationStatus(str, Enum):
     SHORTLISTED = "shortlisted"
     REJECTED = "rejected"
     HIRED = "hired"
+
+
+class CandidateRankingRecommendation(str, Enum):
+    STRONG_MATCH = "strong_match"
+    POSSIBLE_MATCH = "possible_match"
+    NOT_RECOMMENDED = "not_recommended"
+
+
+class CandidateRankingStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"

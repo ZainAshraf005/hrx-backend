@@ -1,12 +1,14 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal
 from app.core.security import normalize_email
-from app.models.enums import JobApplicationStatus, JobStatus, UserRole
+from app.models.enums import CandidateRankingStatus, JobApplicationStatus, JobStatus, UserRole
 from app.models.job.job_application_model import JobApplication
 from app.models.job.job_model import Job
 from app.models.user.user_model import User
@@ -37,6 +39,7 @@ class JobApplicationService:
 
         return ResumeParseResponse(
             job_id=job_id,
+            resume_text=resume_text,
             parsed_resume=parsed_resume,
         )
 
@@ -58,10 +61,12 @@ class JobApplicationService:
             linkedin_url=data.linkedin_url,
             portfolio_url=data.portfolio_url,
             summary=data.summary,
+            resume_text=data.resume_text,
             parsed_resume=data.parsed_resume.model_dump(mode="json") if data.parsed_resume else None,
             cover_letter=data.cover_letter,
             status=JobApplicationStatus.SUBMITTED,
         )
+        await self._rank_application(job, application)
 
         self.db.add(application)
         try:
@@ -73,16 +78,49 @@ class JobApplicationService:
         await self.db.refresh(application)
         return application
 
-    async def get_applications_for_job(self, job_id: UUID, current_user: User):
+    async def get_applications_for_job(self, job_id: UUID, current_user: User, sort: str = "rank"):
         organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
         await self._get_organization_job(job_id, organization_id)
 
+        if sort not in ("rank", "created_at"):
+            raise HTTPException(status_code=400, detail="sort must be either 'rank' or 'created_at'")
+
+        query = select(JobApplication).where(
+            JobApplication.job_id == job_id,
+            JobApplication.organization_id == organization_id,
+        )
+        if sort == "rank":
+            query = query.order_by(
+                case(
+                    (JobApplication.ranking_status == CandidateRankingStatus.COMPLETED, 0),
+                    else_=1,
+                ),
+                JobApplication.ranking_score.desc().nullslast(),
+                JobApplication.created_at.desc(),
+            )
+        else:
+            query = query.order_by(JobApplication.created_at.desc())
+
         result = await self.db.execute(
-            select(JobApplication)
-            .where(JobApplication.job_id == job_id, JobApplication.organization_id == organization_id)
-            .order_by(JobApplication.created_at.desc())
+            query
         )
         return result.scalars().all()
+
+    async def rerank_applications_for_job(self, job_id: UUID):
+        result = await self.db.execute(select(Job).where(Job.id == job_id))
+        job = result.scalar_one_or_none()
+        if not job:
+            return
+
+        result = await self.db.execute(
+            select(JobApplication)
+            .where(JobApplication.job_id == job_id)
+            .order_by(JobApplication.created_at.asc())
+        )
+        applications = result.scalars().all()
+        for application in applications:
+            await self._rank_application(job, application)
+            await self.db.commit()
 
     async def get_application(self, application_id: UUID, current_user: User):
         organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
@@ -109,6 +147,42 @@ class JobApplicationService:
         await self.db.commit()
         await self.db.refresh(application)
         return application
+
+    async def _rank_application(self, job: Job, application: JobApplication):
+        application.ranking_status = CandidateRankingStatus.PENDING
+        application.ranking_error = None
+
+        try:
+            ranking = await self.gemini_service.rank_candidate_for_job(job, application)
+        except HTTPException as exc:
+            application.ranking_score = None
+            application.ranking_recommendation = None
+            application.ranking_rationale = None
+            application.ranking_strengths = None
+            application.ranking_gaps = None
+            application.ranking_status = CandidateRankingStatus.FAILED
+            application.ranking_error = str(exc.detail)
+            application.ranked_at = datetime.now(timezone.utc)
+            return
+        except Exception as exc:
+            application.ranking_score = None
+            application.ranking_recommendation = None
+            application.ranking_rationale = None
+            application.ranking_strengths = None
+            application.ranking_gaps = None
+            application.ranking_status = CandidateRankingStatus.FAILED
+            application.ranking_error = str(exc)
+            application.ranked_at = datetime.now(timezone.utc)
+            return
+
+        application.ranking_score = ranking.score
+        application.ranking_recommendation = ranking.recommendation
+        application.ranking_rationale = ranking.rationale
+        application.ranking_strengths = ranking.strengths
+        application.ranking_gaps = ranking.gaps
+        application.ranking_status = CandidateRankingStatus.COMPLETED
+        application.ranking_error = None
+        application.ranked_at = datetime.now(timezone.utc)
 
     async def _get_public_job(self, job_id: UUID) -> Job:
         result = await self.db.execute(
@@ -141,3 +215,9 @@ class JobApplicationService:
         if current_user.role not in (UserRole.ORG_ADMIN, UserRole.HR_MANAGER) or not current_user.organization_id:
             raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id
+
+
+async def rerank_job_applications_for_job(job_id: UUID):
+    async with AsyncSessionLocal() as db:
+        service = JobApplicationService(db, ResumeService(), GeminiService())
+        await service.rerank_applications_for_job(job_id)

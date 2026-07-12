@@ -1,9 +1,14 @@
-from sqlalchemy import Column, Enum as SAEnum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base_model import BaseModel
-from app.models.enums import JobApplicationStatus, enum_values
+from app.models.enums import (
+    CandidateRankingRecommendation,
+    CandidateRankingStatus,
+    JobApplicationStatus,
+    enum_values,
+)
 
 
 class JobApplication(BaseModel):
@@ -45,6 +50,26 @@ class JobApplication(BaseModel):
         default=JobApplicationStatus.SUBMITTED,
         index=True,
     )
+    ranking_score = Column(Integer, nullable=True)
+    ranking_recommendation = Column(
+        SAEnum(
+            CandidateRankingRecommendation,
+            values_callable=enum_values,
+            name="candidate_ranking_recommendation",
+        ),
+        nullable=True,
+    )
+    ranking_rationale = Column(Text, nullable=True)
+    ranking_strengths = Column(JSONB, nullable=True)
+    ranking_gaps = Column(JSONB, nullable=True)
+    ranking_status = Column(
+        SAEnum(CandidateRankingStatus, values_callable=enum_values, name="candidate_ranking_status"),
+        nullable=False,
+        default=CandidateRankingStatus.PENDING,
+        index=True,
+    )
+    ranking_error = Column(Text, nullable=True)
+    ranked_at = Column(DateTime(timezone=True), nullable=True)
 
     job = relationship("Job", back_populates="applications")
     organization = relationship("Organization")
