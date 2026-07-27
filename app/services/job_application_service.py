@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.security import normalize_email
-from app.models.enums import CandidateRankingStatus, JobApplicationStatus, JobStatus, UserRole
+from app.models.enums import (
+    AIKnowledgeSourceType,
+    CandidateRankingStatus,
+    JobApplicationStatus,
+    JobStatus,
+    UserRole,
+)
 from app.models.job.job_application_model import JobApplication
 from app.models.job.job_model import Job
 from app.models.user.user_model import User
@@ -19,6 +25,7 @@ from app.schemas.job_application_schema import (
 )
 from app.services.gemini_service import GeminiService
 from app.services.resume_service import ResumeService
+from app.services.ai.indexing_service import enqueue_index_task
 
 
 class JobApplicationService:
@@ -69,6 +76,13 @@ class JobApplicationService:
         await self._rank_application(job, application)
 
         self.db.add(application)
+        await self.db.flush()
+        await enqueue_index_task(
+            self.db,
+            job.organization_id,
+            AIKnowledgeSourceType.APPLICATION,
+            application.id,
+        )
         try:
             await self.db.commit()
         except IntegrityError as exc:

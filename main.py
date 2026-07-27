@@ -8,6 +8,7 @@ from app.api.auth_controller import router as auth_router
 from app.api.employee_controller import router as employee_router
 from app.api.job_controller import router as job_router
 from app.api.profile_controller import router as profile_router
+from app.api.ai_controller import router as ai_router
 
 
 # -------------------------
@@ -62,3 +63,4 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(employee_router, prefix="/api")
 app.include_router(job_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(ai_router, prefix="/api")

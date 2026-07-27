@@ -11,5 +11,6 @@ class Organization(BaseModel):
     email = Column(String, nullable=True, unique=True)
     website = Column(String, nullable=True)
     description = Column(String, nullable=True)
+    timezone = Column(String, nullable=False, default="Asia/Karachi", server_default="Asia/Karachi")
 
     jobs = relationship("Job", back_populates="organization", cascade="all, delete-orphan")

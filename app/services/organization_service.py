@@ -50,25 +50,73 @@ class OrganizationService:
         return result.scalar_one_or_none()
 
     async def update_organization(self, organization_id: UUID, data: OrganizationUpdate):
-        # Logic to update an organization's details in the database
         org = await self.get_organization(organization_id)
 
         if not org:
             return None
 
-        if data.name is not None:
+        if data.name is not None and data.name != org.name:
+            existing_name = await self.db.scalar(
+                select(Organization.id).where(
+                    Organization.name == data.name,
+                    Organization.id != organization_id,
+                )
+            )
+            if existing_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Organization name already exists",
+                )
             org.name = data.name
         if data.email is not None:
-            org.email = normalize_email(str(data.email))
-        if data.description is not None:
+            email = normalize_email(str(data.email))
+            if email != org.email:
+                existing_email = await self.db.scalar(
+                    select(Organization.id).where(
+                        Organization.email == email,
+                        Organization.id != organization_id,
+                    )
+                )
+                if existing_email:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Organization email already exists",
+                    )
+                org.email = email
+        if "description" in data.model_fields_set:
             org.description = data.description
-        if data.website is not None:
+        if "website" in data.model_fields_set:
             org.website = data.website
+        if data.timezone is not None:
+            org.timezone = data.timezone
 
         await self.db.commit()
         await self.db.refresh(org)
 
         return org
+
+    async def get_own_organization(self, current_user: User) -> Organization:
+        organization_id = self._require_org_admin_organization(current_user)
+        organization = await self.get_organization(organization_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return organization
+
+    async def update_own_organization(
+        self,
+        data: OrganizationUpdate,
+        current_user: User,
+    ) -> Organization:
+        organization_id = self._require_org_admin_organization(current_user)
+        organization = await self.update_organization(organization_id, data)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return organization
+
+    def _require_org_admin_organization(self, current_user: User) -> UUID:
+        if current_user.role != UserRole.ORG_ADMIN or not current_user.organization_id:
+            raise HTTPException(status_code=403, detail="Not Authorized")
+        return current_user.organization_id
 
     async def delete_organization(self, organization_id: UUID):
         # Logic to delete an organization from the database

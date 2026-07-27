@@ -56,3 +56,41 @@ class CandidateRankingStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class AIConversationMode(str, Enum):
+    READ_MODE = "read_mode"
+    ACTION_MODE = "action_mode"
+
+
+class AIMessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
+
+
+class AIMessageStatus(str, Enum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AIActionProposalStatus(str, Enum):
+    PENDING = "pending"
+    EXECUTED = "executed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    FAILED = "failed"
+
+
+class AIKnowledgeSourceType(str, Enum):
+    JOB = "job"
+    APPLICATION = "application"
+
+
+class AIIndexTaskStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"

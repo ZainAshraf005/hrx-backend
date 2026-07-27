@@ -9,6 +9,8 @@ from app.models.job.job_model import Job
 from app.models.enums import JobStatus, UserRole
 from app.models.user.user_model import User
 from app.schemas.job_schema import JobCreate, JobUpdate
+from app.models.enums import AIKnowledgeSourceType
+from app.services.ai.indexing_service import enqueue_index_task
 
 
 class JobService:
@@ -41,6 +43,13 @@ class JobService:
         self._apply_status_timestamps(job, data.status)
 
         self.db.add(job)
+        await self.db.flush()
+        await enqueue_index_task(
+            self.db,
+            job.organization_id,
+            AIKnowledgeSourceType.JOB,
+            job.id,
+        )
         await self.db.commit()
         await self.db.refresh(job)
         return job
@@ -113,6 +122,12 @@ class JobService:
             job.status = data.status
             self._apply_status_timestamps(job, data.status)
 
+        await enqueue_index_task(
+            self.db,
+            job.organization_id,
+            AIKnowledgeSourceType.JOB,
+            job.id,
+        )
         await self.db.commit()
         await self.db.refresh(job)
         return job
@@ -121,6 +136,12 @@ class JobService:
         job = await self.get_organization_job(job_id, current_user)
         job.is_active = False
 
+        await enqueue_index_task(
+            self.db,
+            job.organization_id,
+            AIKnowledgeSourceType.JOB,
+            job.id,
+        )
         await self.db.commit()
         await self.db.refresh(job)
         return job

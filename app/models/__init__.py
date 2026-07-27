@@ -16,3 +16,11 @@ from app.models.organization.organization_application import OrganizationApplica
 from app.models.organization.organization_invite import OrganizationInvite
 from app.models.user.password_reset_otp import PasswordResetOtp
 from app.models.user.user_model import User
+from app.models.ai import (
+    AIActionAudit,
+    AIActionProposal,
+    AIConversation,
+    AIIndexTask,
+    AIKnowledgeChunk,
+    AIMessage,
+)
