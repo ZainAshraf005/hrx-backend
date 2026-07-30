@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, Enum as SAEnum, ForeignKey
+from sqlalchemy import Column, String, Boolean, Enum as SAEnum, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -9,6 +9,16 @@ from app.models.enums import UserRole, enum_values
 
 class User(BaseModel):
     __tablename__ = "users"
+    __table_args__ = (
+        Index(
+            "uq_users_one_active_hr_per_organization",
+            "organization_id",
+            unique=True,
+            postgresql_where=text(
+                "role = 'hr_manager'::user_role AND is_active IS TRUE"
+            ),
+        ),
+    )
 
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=True)  # set after OTP

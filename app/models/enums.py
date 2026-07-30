@@ -12,6 +12,28 @@ class UserRole(str, Enum):
     EMPLOYEE = "employee"
 
 
+class AttendanceDayStatus(str, Enum):
+    CHECKED_IN = "checked_in"
+    PRESENT = "present"
+    ON_LEAVE = "on_leave"
+    ABSENT = "absent"
+    NON_WORKING = "non_working"
+
+
+class LeaveType(str, Enum):
+    SICK = "sick"
+    CASUAL = "casual"
+    ANNUAL = "annual"
+    UNPAID = "unpaid"
+
+
+class LeaveStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
 class JobEmploymentType(str, Enum):
     FULL_TIME = "full_time"
     PART_TIME = "part_time"

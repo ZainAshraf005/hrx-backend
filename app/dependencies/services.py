@@ -3,12 +3,14 @@ from fastapi import Depends
 
 from app.dependencies.db import get_db
 from app.services.auth_service import AuthService
+from app.services.attendance_service import AttendanceService
 from app.services.email_service import EmailService
 from app.services.employee_service import EmployeeService
 from app.services.gemini_service import GeminiService
 from app.services.job_application_service import JobApplicationService
 from app.services.job_service import JobService
 from app.services.organization_service import OrganizationService
+from app.services.leave_service import LeaveService
 from app.services.resume_service import ResumeService
 from app.services.ai.action_service import AIActionService
 from app.services.ai.conversation_service import AIConversationService
@@ -33,6 +35,17 @@ def get_auth_service(db: AsyncSession = Depends(get_db),
 def get_employee_service(db: AsyncSession = Depends(get_db),
                          email_service: EmailService = Depends(get_email_service)):
     return EmployeeService(db, email_service)
+
+
+def get_attendance_service(db: AsyncSession = Depends(get_db)):
+    return AttendanceService(db)
+
+
+def get_leave_service(
+    db: AsyncSession = Depends(get_db),
+    email_service: EmailService = Depends(get_email_service),
+):
+    return LeaveService(db, email_service)
 
 
 def get_job_service(db: AsyncSession = Depends(get_db)):

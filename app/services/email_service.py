@@ -1,6 +1,7 @@
 import os
 import aiosmtplib
 from email.message import EmailMessage
+from html import escape
 
 
 class EmailService:
@@ -104,4 +105,35 @@ class EmailService:
             to=email,
             subject="Set up your employee account",
             html=html
+        )
+
+    async def send_leave_status_email(
+        self,
+        email: str,
+        first_name: str,
+        leave_type: str,
+        start_date,
+        end_date,
+        status: str,
+        reason: str | None = None,
+    ):
+        reason_html = (
+            f"<p><b>Comment:</b> {escape(reason)}</p>" if reason else ""
+        )
+        html = f"""
+        <div style="font-family: Arial, sans-serif;">
+            <h2>Leave Request Updated</h2>
+            <p>Hello {escape(first_name)},</p>
+            <p>
+                Your {escape(leave_type)} leave request from
+                <b>{start_date.isoformat()}</b> to <b>{end_date.isoformat()}</b>
+                is now <b>{escape(status)}</b>.
+            </p>
+            {reason_html}
+        </div>
+        """
+        await self.send_email(
+            to=email,
+            subject=f"Leave request {status}",
+            html=html,
         )
