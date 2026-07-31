@@ -1,5 +1,7 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, EmailStr
+
 from app.models.organization.organization_application import Status
 
 

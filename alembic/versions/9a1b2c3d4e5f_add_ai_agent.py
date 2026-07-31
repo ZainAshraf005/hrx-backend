@@ -4,18 +4,18 @@ Revision ID: 9a1b2c3d4e5f
 Revises: 7c3a9f1b2d5e
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-from pgvector.sqlalchemy import Vector
-
 
 revision: str = "9a1b2c3d4e5f"
-down_revision: Union[str, Sequence[str], None] = "7c3a9f1b2d5e"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "7c3a9f1b2d5e"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

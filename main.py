@@ -1,16 +1,17 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.organization_controller import router as organization_router
-from app.api.email_test_controller import router as email_test_router
-from app.api.auth_controller import router as auth_router
-from app.api.employee_controller import router as employee_router
-from app.api.job_controller import router as job_router
-from app.api.profile_controller import router as profile_router
 from app.api.ai_controller import router as ai_router
 from app.api.attendance_controller import router as attendance_router
+from app.api.auth_controller import router as auth_router
+from app.api.email_test_controller import router as email_test_router
+from app.api.employee_controller import router as employee_router
+from app.api.job_controller import router as job_router
 from app.api.leave_controller import router as leave_router
+from app.api.organization_controller import router as organization_router
+from app.api.profile_controller import router as profile_router
 
 
 # -------------------------

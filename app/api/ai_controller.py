@@ -33,7 +33,6 @@ from app.services.ai.action_service import AIActionService
 from app.services.ai.conversation_service import AIConversationService
 from app.services.job_application_service import rerank_job_applications_for_job
 
-
 router = APIRouter(prefix="/ai", tags=["ai-agent"])
 agent_user = require_roles("org_admin", "hr_manager")
 

@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -23,7 +23,7 @@ async def enqueue_index_task(
     source_type: AIKnowledgeSourceType,
     source_id: UUID,
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     statement = (
         insert(AIIndexTask)
         .values(
@@ -173,7 +173,7 @@ class IndexTaskRunner:
         self.index_service = index_service
 
     async def run_one(self) -> bool:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await self.db.execute(
             select(AIIndexTask)
             .where(
@@ -201,7 +201,9 @@ class IndexTaskRunner:
 
         try:
             await self.index_service.process(task)
-        except Exception as exc:
+        # A worker must persist and reschedule every task failure, regardless
+        # of which provider/database exception produced it.
+        except Exception as exc:  # noqa: BLE001
             await self.db.rollback()
             task = await self._reload_task_for_update(task_id)
             if not task:
@@ -209,13 +211,13 @@ class IndexTaskRunner:
                 return True
             if task.generation == claimed_generation:
                 task.status = AIIndexTaskStatus.FAILED
-                task.available_at = datetime.now(timezone.utc) + timedelta(
+                task.available_at = datetime.now(UTC) + timedelta(
                     seconds=min(300, 2 ** task.attempts)
                 )
                 task.last_error = str(exc)[:2000]
             else:
                 task.status = AIIndexTaskStatus.PENDING
-                task.available_at = datetime.now(timezone.utc)
+                task.available_at = datetime.now(UTC)
             task.locked_at = None
             task.claimed_generation = None
             await self.db.commit()
@@ -230,7 +232,7 @@ class IndexTaskRunner:
             task.last_error = None
         else:
             task.status = AIIndexTaskStatus.PENDING
-            task.available_at = datetime.now(timezone.utc)
+            task.available_at = datetime.now(UTC)
         task.locked_at = None
         task.claimed_generation = None
         await self.db.commit()
@@ -246,7 +248,7 @@ class IndexTaskRunner:
         return result.scalar_one_or_none()
 
     async def recover_stale(self, older_than_seconds: int = 600) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
+        cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
         result = await self.db.execute(
             update(AIIndexTask)
             .where(
@@ -255,11 +257,11 @@ class IndexTaskRunner:
             )
             .values(
                 status=AIIndexTaskStatus.PENDING,
-                available_at=datetime.now(timezone.utc),
+                available_at=datetime.now(UTC),
                 locked_at=None,
                 claimed_generation=None,
                 last_error="Recovered after worker interruption",
             )
         )
         await self.db.commit()
-        return result.rowcount or 0
+        return getattr(result, "rowcount", 0) or 0

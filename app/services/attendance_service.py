@@ -1,4 +1,5 @@
-from datetime import date, datetime, timedelta, timezone
+from collections.abc import Sequence
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -339,7 +340,7 @@ class AttendanceService:
         }
 
     @staticmethod
-    def _is_on_leave(work_date: date, leaves: list[LeaveRequest]) -> bool:
+    def _is_on_leave(work_date: date, leaves: Sequence[LeaveRequest]) -> bool:
         return any(
             leave.start_date <= work_date <= leave.end_date for leave in leaves
         )
@@ -354,8 +355,8 @@ class AttendanceService:
     @staticmethod
     def _aware_utc(value: datetime) -> datetime:
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)

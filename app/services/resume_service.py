@@ -1,12 +1,11 @@
+import re
 from io import BytesIO
 from pathlib import Path
-import re
 
 from fastapi import HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import RESUME_ALLOWED_EXTENSIONS, RESUME_MAX_UPLOAD_BYTES
-
 
 RESUME_READ_CHUNK_BYTES = 1024 * 1024
 CHARACTER_SPACED_PATTERN = re.compile(r"[A-Za-z0-9](?:\s+[A-Za-z0-9]){2,}")

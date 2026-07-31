@@ -1,7 +1,8 @@
 import os
-import aiosmtplib
 from email.message import EmailMessage
 from html import escape
+
+import aiosmtplib
 
 
 class EmailService:

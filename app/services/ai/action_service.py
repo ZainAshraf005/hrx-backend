@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -12,6 +12,7 @@ from app.models.ai.agent_models import (
     AIActionProposal,
     AIConversation,
 )
+from app.models.employee.employee_model import Employee
 from app.models.enums import (
     AIActionProposalStatus,
     AIConversationMode,
@@ -20,7 +21,6 @@ from app.models.enums import (
 )
 from app.models.job.job_application_model import JobApplication
 from app.models.job.job_model import Job
-from app.models.employee.employee_model import Employee
 from app.models.organization.organization import Organization
 from app.models.user.user_model import User
 from app.schemas.employee_schema import EmployeeCreate, EmployeeUpdate
@@ -87,8 +87,8 @@ class AIActionService:
         self._validate_pending_proposal(proposal, current_user)
         expires_at = proposal.expires_at
         if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at <= datetime.now(timezone.utc):
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at <= datetime.now(UTC):
             await self._expire(proposal, "Action proposal has expired")
             raise HTTPException(status_code=409, detail="Action proposal has expired")
 
@@ -115,7 +115,7 @@ class AIActionService:
 
         proposal.status = AIActionProposalStatus.EXECUTED
         proposal.confirmation_key = confirmation_key
-        proposal.executed_at = datetime.now(timezone.utc)
+        proposal.executed_at = datetime.now(UTC)
         initial_audit = AIActionAudit(
             organization_id=proposal.organization_id,
             actor_user_id=current_user.id,
@@ -141,16 +141,17 @@ class AIActionService:
             persisted = await self._locked_proposal(proposal_id)
             if persisted.status == AIActionProposalStatus.EXECUTED:
                 persisted.error = str(exc.detail)
-                persisted.result = {
+                warning_result = {
                     "executed": True,
                     "warning": str(exc.detail),
                 }
+                persisted.result = warning_result
                 self.db.add(
                     self._result_audit(
                         persisted,
                         current_user,
                         "action_executed_with_warning",
-                        persisted.result,
+                        warning_result,
                     )
                 )
                 await self.db.commit()
@@ -158,21 +159,24 @@ class AIActionService:
                 return persisted
             await self._mark_failed(persisted, current_user, str(exc.detail))
             raise
-        except Exception:
+        # The action boundary must convert unknown service failures into a
+        # stable API error after recording the proposal outcome.
+        except Exception:  # noqa: BLE001
             await self.db.rollback()
             persisted = await self._locked_proposal(proposal_id)
             if persisted.status == AIActionProposalStatus.EXECUTED:
                 persisted.error = "The action committed but a follow-up side effect failed"
-                persisted.result = {
+                warning_result = {
                     "executed": True,
                     "warning": persisted.error,
                 }
+                persisted.result = warning_result
                 self.db.add(
                     self._result_audit(
                         persisted,
                         current_user,
                         "action_executed_with_warning",
-                        persisted.result,
+                        warning_result,
                     )
                 )
                 await self.db.commit()
@@ -185,10 +189,11 @@ class AIActionService:
             )
             raise HTTPException(status_code=500, detail="Action execution failed")
 
-        proposal.result = {
+        result_payload = {
             "executed": True,
             "resource": self._resource_result(resource),
         }
+        proposal.result = result_payload
         if getattr(resource, "id", None):
             proposal.resource_id = resource.id
         self.db.add(
@@ -196,7 +201,7 @@ class AIActionService:
                 proposal,
                 current_user,
                 "action_executed",
-                proposal.result,
+                result_payload,
             )
         )
         await self.db.commit()
@@ -305,6 +310,8 @@ class AIActionService:
             "employee": Employee,
             "organization": Organization,
         }
+        if proposal.resource_type is None:
+            raise HTTPException(status_code=400, detail="Unsupported action target")
         model = model_by_type.get(proposal.resource_type)
         if not model:
             raise HTTPException(status_code=400, detail="Unsupported action target")

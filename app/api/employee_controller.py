@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
@@ -9,7 +8,6 @@ from app.dependencies.services import get_employee_service
 from app.models.user.user_model import User
 from app.schemas.employee_schema import EmployeeCreate, EmployeeResponse, EmployeeUpdate
 from app.services.employee_service import EmployeeService
-
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -25,7 +23,7 @@ async def create_employee(
     return await service.create_employee(payload, current_user, frontend_url)
 
 
-@router.get("/", response_model=List[EmployeeResponse])
+@router.get("/", response_model=list[EmployeeResponse])
 async def list_employees(
     include_inactive: bool = False,
     current_user: User = Depends(require_roles("org_admin")),

@@ -1,7 +1,10 @@
+from datetime import datetime
+from typing import Any
+from uuid import UUID as PyUUID
+
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Column,
     DateTime,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
@@ -9,9 +12,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import relationship
-from pgvector.sqlalchemy import Vector
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base_model import BaseModel
 from app.models.enums import (
@@ -31,32 +36,32 @@ class AIConversation(BaseModel):
         Index("ix_ai_conversations_owner_created", "user_id", "created_at"),
     )
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    user_id = Column(
+    user_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    title = Column(String(200), nullable=True)
-    mode = Column(
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    mode: Mapped[AIConversationMode] = mapped_column(
         SAEnum(AIConversationMode, values_callable=enum_values, name="ai_conversation_mode"),
         nullable=False,
         default=AIConversationMode.READ_MODE,
     )
 
-    messages = relationship(
+    messages: Mapped[list[AIMessage]] = relationship(
         "AIMessage",
         back_populates="conversation",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    proposals = relationship(
+    proposals: Mapped[list[AIActionProposal]] = relationship(
         "AIActionProposal",
         back_populates="conversation",
         cascade="all, delete-orphan",
@@ -70,57 +75,63 @@ class AIMessage(BaseModel):
         Index("ix_ai_messages_conversation_created", "conversation_id", "created_at"),
     )
 
-    conversation_id = Column(
+    conversation_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ai_conversations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    role = Column(
+    role: Mapped[AIMessageRole] = mapped_column(
         SAEnum(AIMessageRole, values_callable=enum_values, name="ai_message_role"),
         nullable=False,
     )
-    status = Column(
+    status: Mapped[AIMessageStatus] = mapped_column(
         SAEnum(AIMessageStatus, values_callable=enum_values, name="ai_message_status"),
         nullable=False,
         default=AIMessageStatus.COMPLETED,
     )
-    content = Column(Text, nullable=False, default="")
-    structured_results = Column(JSONB, nullable=True)
-    model = Column(String(120), nullable=True)
-    error = Column(Text, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    structured_results: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    conversation = relationship("AIConversation", back_populates="messages")
+    conversation: Mapped[AIConversation] = relationship(
+        "AIConversation",
+        back_populates="messages",
+    )
 
 
 class AIActionProposal(BaseModel):
     __tablename__ = "ai_action_proposals"
 
-    conversation_id = Column(
+    conversation_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ai_conversations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    proposed_by_user_id = Column(
+    proposed_by_user_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    operation = Column(String(80), nullable=False, index=True)
-    arguments = Column(JSONB, nullable=False)
-    preview = Column(JSONB, nullable=False)
-    resource_type = Column(String(80), nullable=True)
-    resource_id = Column(UUID(as_uuid=True), nullable=True)
-    expected_updated_at = Column(DateTime(timezone=True), nullable=True)
-    status = Column(
+    operation: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    preview: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    resource_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    resource_id: Mapped[PyUUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    expected_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    status: Mapped[AIActionProposalStatus] = mapped_column(
         SAEnum(
             AIActionProposalStatus,
             values_callable=enum_values,
@@ -130,13 +141,27 @@ class AIActionProposal(BaseModel):
         default=AIActionProposalStatus.PENDING,
         index=True,
     )
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    confirmation_key = Column(String(200), nullable=True, unique=True)
-    executed_at = Column(DateTime(timezone=True), nullable=True)
-    result = Column(JSONB, nullable=True)
-    error = Column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    confirmation_key: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+        unique=True,
+    )
+    executed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    conversation = relationship("AIConversation", back_populates="proposals")
+    conversation: Mapped[AIConversation] = relationship(
+        "AIConversation",
+        back_populates="proposals",
+    )
 
 
 class AIActionAudit(BaseModel):
@@ -145,29 +170,37 @@ class AIActionAudit(BaseModel):
         Index("ix_ai_action_audits_org_created", "organization_id", "created_at"),
     )
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    actor_user_id = Column(
+    actor_user_id: Mapped[PyUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    conversation_id = Column(
+    conversation_id: Mapped[PyUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ai_conversations.id", ondelete="SET NULL"),
         nullable=True,
     )
-    proposal_id = Column(UUID(as_uuid=True), nullable=True, index=True)
-    event_type = Column(String(80), nullable=False, index=True)
-    operation = Column(String(80), nullable=True)
-    resource_type = Column(String(80), nullable=True)
-    resource_id = Column(UUID(as_uuid=True), nullable=True)
-    details = Column(JSONB, nullable=False, default=dict)
+    proposal_id: Mapped[PyUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    operation: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    resource_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    resource_id: Mapped[PyUUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    details: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
 
 
 class AIKnowledgeChunk(BaseModel):
@@ -182,13 +215,13 @@ class AIKnowledgeChunk(BaseModel):
         Index("ix_ai_knowledge_org_source", "organization_id", "source_type", "source_id"),
     )
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    source_type = Column(
+    source_type: Mapped[AIKnowledgeSourceType] = mapped_column(
         SAEnum(
             AIKnowledgeSourceType,
             values_callable=enum_values,
@@ -197,13 +230,21 @@ class AIKnowledgeChunk(BaseModel):
         nullable=False,
         index=True,
     )
-    source_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    chunk_index = Column(Integer, nullable=False)
-    content = Column(Text, nullable=False)
-    source_metadata = Column(JSONB, nullable=False, default=dict)
-    content_hash = Column(String(64), nullable=False, index=True)
-    embedding_model = Column(String(120), nullable=False)
-    embedding = Column(Vector(768), nullable=False)
+    source_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    embedding_model: Mapped[str] = mapped_column(String(120), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(768), nullable=False)
 
 
 class AIIndexTask(BaseModel):
@@ -213,13 +254,13 @@ class AIIndexTask(BaseModel):
         Index("ix_ai_index_tasks_ready", "status", "available_at"),
     )
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    source_type = Column(
+    source_type: Mapped[AIKnowledgeSourceType] = mapped_column(
         SAEnum(
             AIKnowledgeSourceType,
             values_callable=enum_values,
@@ -227,16 +268,19 @@ class AIIndexTask(BaseModel):
         ),
         nullable=False,
     )
-    source_id = Column(UUID(as_uuid=True), nullable=False)
-    status = Column(
+    source_id: Mapped[PyUUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[AIIndexTaskStatus] = mapped_column(
         SAEnum(AIIndexTaskStatus, values_callable=enum_values, name="ai_index_task_status"),
         nullable=False,
         default=AIIndexTaskStatus.PENDING,
         index=True,
     )
-    generation = Column(Integer, nullable=False, default=1)
-    claimed_generation = Column(Integer, nullable=True)
-    attempts = Column(Integer, nullable=False, default=0)
-    available_at = Column(DateTime(timezone=True), nullable=False)
-    locked_at = Column(DateTime(timezone=True), nullable=True)
-    last_error = Column(Text, nullable=True)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    claimed_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

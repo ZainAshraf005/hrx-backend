@@ -5,7 +5,11 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.enums import (
     CandidateRankingRecommendation as CandidateRankingRecommendationEnum,
+)
+from app.models.enums import (
     CandidateRankingStatus as CandidateRankingStatusEnum,
+)
+from app.models.enums import (
     JobApplicationStatus as JobApplicationStatusEnum,
 )
 

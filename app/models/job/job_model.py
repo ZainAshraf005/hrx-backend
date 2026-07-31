@@ -1,6 +1,11 @@
-from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
+from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID as PyUUID
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base_model import BaseModel
 from app.models.enums import (
@@ -11,55 +16,81 @@ from app.models.enums import (
     enum_values,
 )
 
+if TYPE_CHECKING:
+    from app.models.job.job_application_model import JobApplication
+    from app.models.organization.organization import Organization
+
 
 class Job(BaseModel):
     __tablename__ = "jobs"
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    title = Column(String, nullable=False)
-    description = Column(Text, nullable=False)
-    department = Column(String, nullable=True)
-    location = Column(String, nullable=True)
-    employment_type = Column(
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    department: Mapped[str | None] = mapped_column(String, nullable=True)
+    location: Mapped[str | None] = mapped_column(String, nullable=True)
+    employment_type: Mapped[JobEmploymentType] = mapped_column(
         SAEnum(JobEmploymentType, values_callable=enum_values, name="job_employment_type"),
         nullable=False,
         default=JobEmploymentType.FULL_TIME,
     )
-    workplace_type = Column(
+    workplace_type: Mapped[JobWorkplaceType] = mapped_column(
         SAEnum(JobWorkplaceType, values_callable=enum_values, name="job_workplace_type"),
         nullable=False,
         default=JobWorkplaceType.ONSITE,
     )
-    status = Column(
+    status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus, values_callable=enum_values, name="job_status"),
         nullable=False,
         default=JobStatus.DRAFT,
         index=True,
     )
 
-    salary_min = Column(Integer, nullable=True)
-    salary_max = Column(Integer, nullable=True)
-    salary_currency = Column(String, nullable=True, default="USD")
-    salary_period = Column(
+    salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salary_currency: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        default="USD",
+    )
+    salary_period: Mapped[SalaryPeriod | None] = mapped_column(
         SAEnum(SalaryPeriod, values_callable=enum_values, name="salary_period"),
         nullable=True,
         default=SalaryPeriod.YEARLY,
     )
 
-    experience_level = Column(String, nullable=True)
-    requirements = Column(Text, nullable=True)
-    responsibilities = Column(Text, nullable=True)
-    benefits = Column(Text, nullable=True)
+    experience_level: Mapped[str | None] = mapped_column(String, nullable=True)
+    requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    responsibilities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    benefits: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    published_at = Column(DateTime(timezone=True), nullable=True)
-    closed_at = Column(DateTime(timezone=True), nullable=True)
-    is_active = Column(Boolean, default=True, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=True,
+        default=True,
+        index=True,
+    )
 
-    organization = relationship("Organization", back_populates="jobs")
-    applications = relationship("JobApplication", back_populates="job", cascade="all, delete-orphan")
+    organization: Mapped[Organization] = relationship(
+        "Organization",
+        back_populates="jobs",
+    )
+    applications: Mapped[list[JobApplication]] = relationship(
+        "JobApplication",
+        back_populates="job",
+        cascade="all, delete-orphan",
+    )

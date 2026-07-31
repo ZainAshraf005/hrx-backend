@@ -1,20 +1,23 @@
-from typing import Optional
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import FRONTEND_URL
-from app.models.enums import UserRole
+from app.core.security import create_signed_token, normalize_email
 from app.models import Organization
+from app.models.enums import UserRole
+from app.models.organization.organization_application import (
+    OrganizationApplication,
+    Status,
+)
 from app.models.organization.organization_invite import OrganizationInvite
 from app.models.user.user_model import User
 from app.schemas.organization_application import OrganizationApplicationCreate
 from app.schemas.organization_schema import OrganizationCreate, OrganizationUpdate
-from app.models.organization.organization_application import OrganizationApplication, Status
 from app.services.email_service import EmailService
-from app.core.security import create_signed_token, normalize_email
 
 
 class OrganizationService:
@@ -162,7 +165,7 @@ class OrganizationService:
     async def update_application_status(self, application_id: UUID, status: Status, frontend_url: str = FRONTEND_URL):
         result = await self.db.execute(
             select(OrganizationApplication).where(OrganizationApplication.id == application_id))
-        application: Optional[OrganizationApplication] = result.scalar_one_or_none()
+        application: OrganizationApplication | None = result.scalar_one_or_none()
 
         if not application:
             raise HTTPException(status_code=404, detail="Application not found")
@@ -184,7 +187,7 @@ class OrganizationService:
             invite = OrganizationInvite(
                 email=normalize_email(application.email),
                 organization_id=organization.id,
-                expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+                expires_at=datetime.now(UTC) + timedelta(days=7),
                 role=UserRole.ORG_ADMIN,
             )
             self.db.add(invite)
@@ -206,6 +209,7 @@ class OrganizationService:
         if not should_send_approval_email:
             await self.db.refresh(application)
         if should_send_approval_email:
+            assert setup_token is not None
             await self.email_service.send_approval_email(application.email, application.org_name, setup_token,
                                                          frontend_url)
         return application

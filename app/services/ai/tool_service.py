@@ -1,10 +1,10 @@
-from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Type
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,7 +56,6 @@ from app.services.employee_service import EmployeeService
 from app.services.job_application_service import JobApplicationService
 from app.services.job_service import JobService
 from app.services.organization_service import OrganizationService
-
 
 READ_ROLES = {UserRole.ORG_ADMIN, UserRole.HR_MANAGER}
 ORG_ADMIN_ONLY = {UserRole.ORG_ADMIN}
@@ -145,7 +144,9 @@ class AgentToolService:
             return {"ok": False, "error": "Invalid tool arguments", "details": exc.errors()}
         except HTTPException as exc:
             return {"ok": False, "error": str(exc.detail), "status_code": exc.status_code}
-        except Exception:
+        # Tool implementations are an execution boundary; return a sanitized
+        # result so one tool failure cannot abort the whole agent turn.
+        except Exception:  # noqa: BLE001
             return {"ok": False, "error": "Tool execution failed"}
 
     def is_mutation_tool(self, name: str) -> bool:
@@ -654,7 +655,7 @@ class AgentToolService:
             resource_id=resource_id,
             expected_updated_at=expected_updated_at,
             status=AIActionProposalStatus.PENDING,
-            expires_at=datetime.now(timezone.utc)
+            expires_at=datetime.now(UTC)
             + timedelta(seconds=AI_ACTION_PROPOSAL_TTL_SECONDS),
         )
         self.db.add(proposal)
@@ -724,7 +725,7 @@ class AgentToolService:
             for name, description in descriptions.items()
         }
 
-    def _parameter_models(self) -> dict[str, Type[ToolParams]]:
+    def _parameter_models(self) -> dict[str, type[ToolParams]]:
         return {
             "get_organization": EmptyParams,
             "search_jobs": SearchJobsParams,
@@ -766,7 +767,9 @@ class AgentToolService:
 
         return resolve(schema)
 
-    async def _organization_timezone(self, organization_id: UUID) -> str:
+    async def _organization_timezone(self, organization_id: UUID | None) -> str:
+        if organization_id is None:
+            raise HTTPException(status_code=403, detail="Organization is required")
         value = await self.db.scalar(
             select(Organization.timezone).where(Organization.id == organization_id)
         )
@@ -782,14 +785,14 @@ class AgentToolService:
     ):
         zone = ZoneInfo(timezone_name)
         if start:
-            start_at = datetime.combine(start, time.min, tzinfo=zone).astimezone(timezone.utc)
+            start_at = datetime.combine(start, time.min, tzinfo=zone).astimezone(UTC)
             query = query.where(column >= start_at)
         if end:
             end_at = datetime.combine(
                 end + timedelta(days=1),
                 time.min,
                 tzinfo=zone,
-            ).astimezone(timezone.utc)
+            ).astimezone(UTC)
             query = query.where(column < end_at)
         return query
 

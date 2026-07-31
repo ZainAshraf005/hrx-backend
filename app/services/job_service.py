@@ -1,15 +1,14 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import AIKnowledgeSourceType, JobStatus, UserRole
 from app.models.job.job_model import Job
-from app.models.enums import JobStatus, UserRole
 from app.models.user.user_model import User
 from app.schemas.job_schema import JobCreate, JobUpdate
-from app.models.enums import AIKnowledgeSourceType
 from app.services.ai.indexing_service import enqueue_index_task
 
 
@@ -154,7 +153,7 @@ class JobService:
         )
 
     def _apply_status_timestamps(self, job: Job, status: str):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if status == JobStatus.OPEN and job.published_at is None:
             job.published_at = now
         if status == JobStatus.CLOSED and job.closed_at is None:

@@ -1,10 +1,17 @@
-import uuid
-from sqlalchemy import Column, String, Boolean, Enum as SAEnum, ForeignKey, Index, text
+from typing import TYPE_CHECKING
+from uuid import UUID as PyUUID
+
+from sqlalchemy import Boolean, ForeignKey, Index, String, text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base_model import BaseModel
 from app.models.enums import UserRole, enum_values
+
+if TYPE_CHECKING:
+    from app.models.employee.employee_model import Employee
+    from app.models.organization.organization import Organization
 
 
 class User(BaseModel):
@@ -20,23 +27,27 @@ class User(BaseModel):
         ),
     )
 
-    email = Column(String, unique=True, nullable=False, index=True)
-    password_hash = Column(String, nullable=True)  # set after OTP
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=True
+        nullable=True,
     )
 
-    role = Column(
+    role: Mapped[UserRole] = mapped_column(
         SAEnum(UserRole, values_callable=enum_values, name="user_role"),
         nullable=False,
         default=UserRole.EMPLOYEE,
     )
 
-    is_active = Column(Boolean, default=True)
-    is_verified = Column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=True, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
 
-    organization = relationship("Organization")
-    employee = relationship("Employee", back_populates="user", uselist=False)
+    organization: Mapped[Organization | None] = relationship("Organization")
+    employee: Mapped[Employee | None] = relationship(
+        "Employee",
+        back_populates="user",
+        uselist=False,
+    )

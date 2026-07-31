@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
@@ -23,9 +23,9 @@ from app.schemas.job_application_schema import (
     JobApplicationStatusUpdate,
     ResumeParseResponse,
 )
+from app.services.ai.indexing_service import enqueue_index_task
 from app.services.gemini_service import GeminiService
 from app.services.resume_service import ResumeService
-from app.services.ai.indexing_service import enqueue_index_task
 
 
 class JobApplicationService:
@@ -176,9 +176,11 @@ class JobApplicationService:
             application.ranking_gaps = None
             application.ranking_status = CandidateRankingStatus.FAILED
             application.ranking_error = str(exc.detail)
-            application.ranked_at = datetime.now(timezone.utc)
+            application.ranked_at = datetime.now(UTC)
             return
-        except Exception as exc:
+        # Ranking is a non-critical side effect. Persist any provider failure
+        # on the application while keeping the submitted application usable.
+        except Exception as exc:  # noqa: BLE001
             application.ranking_score = None
             application.ranking_recommendation = None
             application.ranking_rationale = None
@@ -186,7 +188,7 @@ class JobApplicationService:
             application.ranking_gaps = None
             application.ranking_status = CandidateRankingStatus.FAILED
             application.ranking_error = str(exc)
-            application.ranked_at = datetime.now(timezone.utc)
+            application.ranked_at = datetime.now(UTC)
             return
 
         application.ranking_score = ranking.score
@@ -196,7 +198,7 @@ class JobApplicationService:
         application.ranking_gaps = ranking.gaps
         application.ranking_status = CandidateRankingStatus.COMPLETED
         application.ranking_error = None
-        application.ranked_at = datetime.now(timezone.utc)
+        application.ranked_at = datetime.now(UTC)
 
     async def _get_public_job(self, job_id: UUID) -> Job:
         result = await self.db.execute(

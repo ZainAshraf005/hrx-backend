@@ -1,4 +1,5 @@
 from datetime import timedelta
+from typing import ClassVar
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -9,8 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import FRONTEND_URL
 from app.core.security import create_signed_token, normalize_email
-from app.models.enums import UserRole
 from app.models.employee.employee_model import Employee
+from app.models.enums import UserRole
 from app.models.user.user_model import User
 from app.schemas.employee_schema import EmployeeCreate, EmployeeUpdate
 from app.services.email_service import EmailService
@@ -18,7 +19,10 @@ from app.services.email_service import EmailService
 
 class EmployeeService:
     ACTIVE_HR_CONSTRAINT = "uq_users_one_active_hr_per_organization"
-    USER_EMAIL_CONSTRAINTS = {"ix_users_email", "users_email_key"}
+    USER_EMAIL_CONSTRAINTS: ClassVar[set[str]] = {
+        "ix_users_email",
+        "users_email_key",
+    }
 
     def __init__(self, db: AsyncSession, email_service: EmailService):
         self.db = db

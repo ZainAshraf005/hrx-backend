@@ -1,11 +1,10 @@
 import hashlib
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from jose import JWTError, jwt
-
 
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
@@ -47,7 +46,7 @@ def verify_password(password: str, password_hash: str | None) -> bool:
 
 def create_signed_token(payload: dict, expires_delta: timedelta) -> str:
     token_payload = payload.copy()
-    token_payload["exp"] = datetime.now(timezone.utc) + expires_delta
+    token_payload["exp"] = datetime.now(UTC) + expires_delta
     return jwt.encode(token_payload, _secret_key(), algorithm=ALGORITHM)
 
 

@@ -5,8 +5,12 @@ from pydantic import BaseModel, ConfigDict
 
 from app.models.enums import (
     JobEmploymentType,
-    JobStatus as JobStatusEnum,
     JobWorkplaceType,
+)
+from app.models.enums import (
+    JobStatus as JobStatusEnum,
+)
+from app.models.enums import (
     SalaryPeriod as SalaryPeriodEnum,
 )
 

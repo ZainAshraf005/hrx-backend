@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import logging
+from datetime import UTC, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,8 @@ from app.models.organization.organization import Organization
 from app.models.user.user_model import User
 from app.schemas.leave_schema import LeaveRequestCreate, LeaveStatusUpdate
 from app.services.email_service import EmailService
+
+logger = logging.getLogger(__name__)
 
 
 class LeaveService:
@@ -81,7 +84,7 @@ class LeaveService:
         if status is not None:
             query = query.where(LeaveRequest.status == status)
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def get_organization_leaves(
         self,
@@ -108,7 +111,7 @@ class LeaveService:
             query = query.where(LeaveRequest.status == status)
 
         result = await self.db.execute(query)
-        return result.scalars().unique().all()
+        return list(result.scalars().unique().all())
 
     async def withdraw_own(
         self,
@@ -209,8 +212,10 @@ class LeaveService:
                 status=request.status.value,
                 reason=request.status_reason,
             )
+        # The leave status is already committed; an email outage must not
+        # roll it back, but the failed notification still needs visibility.
         except Exception:
-            pass
+            logger.exception("Failed to send leave status email")
 
         return request
 
@@ -298,4 +303,4 @@ class LeaveService:
         return self._now().astimezone(ZoneInfo(timezone_name)).date()
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)

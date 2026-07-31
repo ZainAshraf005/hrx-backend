@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -24,8 +24,8 @@ from app.models.enums import (
     AIMessageStatus,
     UserRole,
 )
-from app.models.user.user_model import User
 from app.models.organization.organization import Organization
+from app.models.user.user_model import User
 from app.schemas.ai_schema import AIConversationCreate
 from app.services.ai.provider import (
     AIProvider,
@@ -70,7 +70,7 @@ class AIConversationService:
             .where(AIConversation.user_id == current_user.id)
             .order_by(AIConversation.updated_at.desc())
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def get(
         self,
@@ -161,7 +161,7 @@ class AIConversationService:
             .order_by(AIActionAudit.created_at.desc())
             .limit(min(max(limit, 1), 200))
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def start_turn(
         self,
@@ -181,7 +181,7 @@ class AIConversationService:
             .where(User.id == current_user.id)
             .with_for_update()
         )
-        stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+        stale_cutoff = datetime.now(UTC) - timedelta(minutes=15)
         stale_result = await self.db.execute(
             select(AIMessage)
             .join(AIConversation, AIConversation.id == AIMessage.conversation_id)
@@ -402,7 +402,9 @@ class AIConversationService:
                 "done",
                 {"message_id": str(assistant_message.id), "status": "failed"},
             )
-        except Exception:
+        # Keep the event stream protocol stable for unexpected provider or
+        # tool failures; the internal exception is not exposed to the client.
+        except Exception:  # noqa: BLE001
             await self._fail_message(
                 assistant_message.id,
                 "AI turn failed",

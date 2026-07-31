@@ -1,7 +1,8 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
-from uuid import UUID
-from typing import Optional
 from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+
 
 class OrganizationCreate(BaseModel):
     name: str
@@ -10,11 +11,11 @@ class OrganizationCreate(BaseModel):
     website: str | None = None
 
 class OrganizationUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    description: Optional[str] = None
-    website: Optional[str] = None
-    timezone: Optional[str] = None
+    name: str | None = None
+    email: EmailStr | None = None
+    description: str | None = None
+    website: str | None = None
+    timezone: str | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -35,8 +36,8 @@ class OrganizationResponse(BaseModel):
     id: UUID
     name: str
     email: EmailStr
-    description: Optional[str] = None
-    website: Optional[str] = None
+    description: str | None = None
+    website: str | None = None
     timezone: str
     updated_at: datetime
     created_at: datetime

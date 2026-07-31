@@ -1,19 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from typing import List
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+
 from app.core.frontend_url import get_frontend_url_from_request
 from app.dependencies.auth import require_roles, require_superadmin_or_own_organization
 from app.dependencies.services import get_organization_service
 from app.models.organization.organization_application import Status
 from app.models.user.user_model import User
-from app.schemas.organization_application import OrganizationApplicationResponse, OrganizationApplicationCreate
+from app.schemas.organization_application import (
+    OrganizationApplicationCreate,
+    OrganizationApplicationResponse,
+)
+from app.schemas.organization_schema import (
+    OrganizationCreate,
+    OrganizationResponse,
+    OrganizationUpdate,
+)
 from app.services.organization_service import OrganizationService
-from app.schemas.organization_schema import OrganizationResponse, OrganizationCreate, OrganizationUpdate
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
 
-@router.get("/applications", response_model=List[OrganizationApplicationResponse])
+@router.get("/applications", response_model=list[OrganizationApplicationResponse])
 async def list_applications(
         current_user: User = Depends(require_roles("superadmin")),
         service: OrganizationService = Depends(get_organization_service)):
@@ -26,7 +34,7 @@ async def create_application(application: OrganizationApplicationCreate,
     return await service.create_application(application)
 
 
-@router.get("/", response_model=List[OrganizationResponse])
+@router.get("/", response_model=list[OrganizationResponse])
 async def list_organizations(
         current_user: User = Depends(require_roles("superadmin")),
         service: OrganizationService = Depends(get_organization_service)):

@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
@@ -13,9 +12,11 @@ from app.schemas.job_application_schema import (
     ResumeParseResponse,
 )
 from app.schemas.job_schema import JobCreate, JobResponse, JobStatus, JobUpdate
-from app.services.job_application_service import JobApplicationService, rerank_job_applications_for_job
+from app.services.job_application_service import (
+    JobApplicationService,
+    rerank_job_applications_for_job,
+)
 from app.services.job_service import JobService
-
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -29,7 +30,7 @@ async def create_job(
     return await service.create_job(payload, current_user)
 
 
-@router.get("/", response_model=List[JobResponse])
+@router.get("/", response_model=list[JobResponse])
 async def list_jobs(
     status: JobStatus | None = None,
     service: JobService = Depends(get_job_service),
@@ -37,7 +38,7 @@ async def list_jobs(
     return await service.get_jobs(status)
 
 
-@router.get("/organization/{organization_id}", response_model=List[JobResponse])
+@router.get("/organization/{organization_id}", response_model=list[JobResponse])
 async def list_jobs_by_organization(
     organization_id: UUID,
     status: JobStatus | None = None,
@@ -46,7 +47,7 @@ async def list_jobs_by_organization(
     return await service.get_jobs_by_organization(organization_id, status)
 
 
-@router.get("/{job_id}/applications", response_model=List[JobApplicationResponse])
+@router.get("/{job_id}/applications", response_model=list[JobApplicationResponse])
 async def list_job_applications(
     job_id: UUID,
     sort: str = "rank",

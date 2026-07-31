@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -7,23 +8,28 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 import main
-from app.models.ai.agent_models import AIActionProposal, AIKnowledgeChunk
+from app.models.ai.agent_models import (
+    AIActionProposal,
+    AIConversation,
+    AIKnowledgeChunk,
+)
 from app.models.enums import (
     AIActionProposalStatus,
     AIConversationMode,
     UserRole,
 )
+from app.models.user.user_model import User
 from app.schemas.organization_schema import OrganizationUpdate
 from app.services.ai.action_service import AIActionService
 from app.services.ai.conversation_service import AIConversationService
 from app.services.ai.indexing_service import KnowledgeIndexService
+from app.services.ai.provider import AIProvider, GeminiAIProvider
 from app.services.ai.tool_schemas import (
     CreateJobDraftParams,
     InviteEmployeeParams,
     UpdateEmployeeParams,
 )
 from app.services.ai.tool_service import AgentToolService
-from app.services.ai.provider import GeminiAIProvider
 
 
 class DummyProvider:
@@ -31,10 +37,10 @@ class DummyProvider:
 
 
 def make_tool_service():
-    placeholder = object()
+    placeholder: Any = object()
     return AgentToolService(
         db=placeholder,
-        provider=DummyProvider(),
+        provider=cast(AIProvider, DummyProvider()),
         job_service=placeholder,
         application_service=placeholder,
         employee_service=placeholder,
@@ -42,8 +48,11 @@ def make_tool_service():
     )
 
 
-def user(role: UserRole):
-    return SimpleNamespace(id=uuid4(), organization_id=uuid4(), role=role)
+def user(role: UserRole) -> User:
+    return cast(
+        User,
+        SimpleNamespace(id=uuid4(), organization_id=uuid4(), role=role),
+    )
 
 
 def test_agent_routes_are_registered():
@@ -105,9 +114,9 @@ def test_employee_tools_cannot_assign_privileged_roles():
     }
     for role in ("org_admin", "superadmin"):
         with pytest.raises(ValidationError):
-            InviteEmployeeParams(**common, role=role)
+            InviteEmployeeParams(**common, role=cast(Any, role))
         with pytest.raises(ValidationError):
-            UpdateEmployeeParams(employee_id=uuid4(), role=role)
+            UpdateEmployeeParams(employee_id=uuid4(), role=cast(Any, role))
 
 
 def test_job_draft_params_do_not_allow_publishing_status():
@@ -126,9 +135,10 @@ def test_action_proposal_expiry_and_ownership_validation():
         arguments={},
         preview={},
         status=AIActionProposalStatus.PENDING,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
     )
-    service = AIActionService(None, None, None, None, None)
+    unused: Any = None
+    service = AIActionService(unused, unused, unused, unused, unused)
     service._validate_pending_proposal(proposal, actor)
 
     other_actor = user(UserRole.HR_MANAGER)
@@ -138,8 +148,16 @@ def test_action_proposal_expiry_and_ownership_validation():
 
 
 def test_system_prompt_locks_scope_and_approval_semantics():
-    service = AIConversationService(None, DummyProvider(), make_tool_service())
-    conversation = SimpleNamespace(mode=AIConversationMode.ACTION_MODE)
+    unused: Any = None
+    service = AIConversationService(
+        unused,
+        cast(AIProvider, DummyProvider()),
+        make_tool_service(),
+    )
+    conversation = cast(
+        AIConversation,
+        SimpleNamespace(mode=AIConversationMode.ACTION_MODE),
+    )
     prompt = service._system_instruction(conversation)
     assert "HRX-supported workflows" in prompt
     assert "Semantic search" in prompt
@@ -150,7 +168,11 @@ def test_system_prompt_locks_scope_and_approval_semantics():
 
 
 def test_recruiting_chunking_has_overlap_and_no_empty_chunks():
-    index_service = KnowledgeIndexService(None, DummyProvider())
+    unused: Any = None
+    index_service = KnowledgeIndexService(
+        unused,
+        cast(AIProvider, DummyProvider()),
+    )
     text = " ".join(f"skill-{index}" for index in range(1000))
     chunks = index_service._chunk_text(text, size=500, overlap=50)
     assert len(chunks) > 2
@@ -159,14 +181,20 @@ def test_recruiting_chunking_has_overlap_and_no_empty_chunks():
 
 
 def test_vector_dimension_and_tenant_column_are_fixed():
-    assert AIKnowledgeChunk.__table__.c.embedding.type.dim == 768
+    embedding_type: Any = AIKnowledgeChunk.__table__.c.embedding.type
+    assert embedding_type.dim == 768
     assert AIKnowledgeChunk.__table__.c.organization_id.nullable is False
     with pytest.raises(ValueError):
         GeminiAIProvider(api_key="test", embedding_dimensions=1536)
 
 
 def test_mutations_are_mapped_to_ambiguous_result_types():
-    service = AIConversationService(None, DummyProvider(), make_tool_service())
+    unused: Any = None
+    service = AIConversationService(
+        unused,
+        cast(AIProvider, DummyProvider()),
+        make_tool_service(),
+    )
     assert service._mutation_target_kind("propose_update_job") == "jobs"
     assert (
         service._mutation_target_kind("propose_change_application_status")

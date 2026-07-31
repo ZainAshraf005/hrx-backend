@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+
 from app.core.frontend_url import get_frontend_url_from_request
 from app.services.email_service import EmailService
 

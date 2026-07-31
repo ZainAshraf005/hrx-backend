@@ -49,6 +49,8 @@ class GeminiService:
                     temperature=0,
                 ),
             )
+            if response.text is None:
+                raise HTTPException(status_code=502, detail="Gemini returned an empty response")
             return ParsedResume.model_validate_json(response.text)
         except ValidationError as exc:
             raise HTTPException(status_code=502, detail="Gemini returned invalid resume JSON") from exc
@@ -74,6 +76,8 @@ class GeminiService:
                     temperature=0,
                 ),
             )
+            if response.text is None:
+                raise HTTPException(status_code=502, detail="Gemini returned an empty response")
             return CandidateRankingResult.model_validate_json(response.text)
         except ValidationError as exc:
             raise HTTPException(status_code=502, detail="Gemini returned invalid ranking JSON") from exc

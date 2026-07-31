@@ -1,21 +1,21 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.db import get_db
-from app.services.auth_service import AuthService
+from app.services.ai.action_service import AIActionService
+from app.services.ai.conversation_service import AIConversationService
+from app.services.ai.provider import GeminiAIProvider
+from app.services.ai.tool_service import AgentToolService
 from app.services.attendance_service import AttendanceService
+from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.employee_service import EmployeeService
 from app.services.gemini_service import GeminiService
 from app.services.job_application_service import JobApplicationService
 from app.services.job_service import JobService
-from app.services.organization_service import OrganizationService
 from app.services.leave_service import LeaveService
+from app.services.organization_service import OrganizationService
 from app.services.resume_service import ResumeService
-from app.services.ai.action_service import AIActionService
-from app.services.ai.conversation_service import AIConversationService
-from app.services.ai.provider import GeminiAIProvider
-from app.services.ai.tool_service import AgentToolService
 
 
 def get_email_service():

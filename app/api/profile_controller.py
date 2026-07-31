@@ -6,7 +6,6 @@ from app.models.user.user_model import User
 from app.schemas.auth_schema import AuthUserResponse, ProfileUpdateRequest
 from app.services.auth_service import AuthService
 
-
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 

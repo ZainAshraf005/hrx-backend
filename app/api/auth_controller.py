@@ -4,10 +4,10 @@ from app.core.cookies import clear_auth_cookie, set_auth_cookie
 from app.dependencies.services import get_auth_service
 from app.schemas.auth_schema import (
     AuthSessionResponse,
+    EmployeeSetPasswordRequest,
     ForgotPasswordOtpRequest,
     ForgotPasswordOtpResponse,
     LoginRequest,
-    EmployeeSetPasswordRequest,
     MessageResponse,
     ResetPasswordRequest,
     SetPasswordRequest,

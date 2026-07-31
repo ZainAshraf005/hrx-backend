@@ -7,9 +7,10 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
-import app.models
+import app.models  # noqa: F401
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password, normalize_email
+from app.models.enums import UserRole
 from app.models.user.user_model import User
 
 
@@ -31,7 +32,7 @@ async def seed_superadmin() -> None:
                 email=normalized_email,
                 password_hash=hash_password(password),
                 organization_id=None,
-                role="superadmin",
+                role=UserRole.SUPERADMIN,
                 is_active=True,
                 is_verified=True,
             )
@@ -39,7 +40,7 @@ async def seed_superadmin() -> None:
         else:
             user.password_hash = hash_password(password)
             user.organization_id = None
-            user.role = "superadmin"
+            user.role = UserRole.SUPERADMIN
             user.is_active = True
             user.is_verified = True
 

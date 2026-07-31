@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -14,7 +13,6 @@ from app.schemas.leave_schema import (
 )
 from app.services.leave_service import LeaveService
 
-
 router = APIRouter(prefix="/leaves", tags=["leaves"])
 
 
@@ -27,7 +25,7 @@ async def create_leave(
     return await service.create_leave(payload, current_user)
 
 
-@router.get("/me", response_model=List[LeaveRequestResponse])
+@router.get("/me", response_model=list[LeaveRequestResponse])
 async def get_my_leaves(
     status: LeaveStatus | None = None,
     current_user: User = Depends(require_roles("employee", "hr_manager")),
@@ -55,7 +53,7 @@ async def change_leave_status(
     return await service.change_status(leave_id, payload, current_user)
 
 
-@router.get("", response_model=List[LeaveRequestResponse])
+@router.get("", response_model=list[LeaveRequestResponse])
 async def get_organization_leaves(
     status: LeaveStatus | None = None,
     employee_id: UUID | None = None,

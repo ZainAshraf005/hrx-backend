@@ -1,8 +1,26 @@
-from sqlalchemy import CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Text, UniqueConstraint, text
+from datetime import date, datetime
+from typing import TYPE_CHECKING
+from uuid import UUID as PyUUID
+
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base_model import BaseModel
+
+if TYPE_CHECKING:
+    from app.models.employee.employee_model import Employee
+    from app.models.organization.organization import Organization
+    from app.models.user.user_model import User
 
 
 class AttendanceRecord(BaseModel):
@@ -30,27 +48,30 @@ class AttendanceRecord(BaseModel):
         ),
     )
 
-    organization_id = Column(
+    organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
-    employee_id = Column(
+    employee_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    work_date = Column(Date, nullable=False, index=True)
-    check_in_at = Column(DateTime(timezone=True), nullable=False)
-    check_out_at = Column(DateTime(timezone=True), nullable=True)
-    checkout_completed_by_user_id = Column(
+    work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    check_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    check_out_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    checkout_completed_by_user_id: Mapped[PyUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    checkout_completion_reason = Column(Text, nullable=True)
+    checkout_completion_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization = relationship("Organization")
-    employee = relationship("Employee")
-    checkout_completed_by = relationship("User")
+    organization: Mapped[Organization] = relationship("Organization")
+    employee: Mapped[Employee] = relationship("Employee")
+    checkout_completed_by: Mapped[User | None] = relationship("User")

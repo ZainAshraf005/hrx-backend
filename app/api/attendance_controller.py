@@ -1,5 +1,4 @@
 from datetime import date
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -14,7 +13,6 @@ from app.schemas.attendance_schema import (
     AttendanceRosterItem,
 )
 from app.services.attendance_service import AttendanceService
-
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -35,7 +33,7 @@ async def check_out(
     return await service.check_out(current_user)
 
 
-@router.get("/me", response_model=List[AttendanceDayResponse])
+@router.get("/me", response_model=list[AttendanceDayResponse])
 async def get_my_attendance(
     start_date: date | None = None,
     end_date: date | None = None,
@@ -62,7 +60,7 @@ async def complete_checkout(
     )
 
 
-@router.get("", response_model=List[AttendanceRosterItem])
+@router.get("", response_model=list[AttendanceRosterItem])
 async def get_daily_attendance(
     date: date | None = None,
     current_user: User = Depends(require_roles("hr_manager")),
