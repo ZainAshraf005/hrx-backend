@@ -85,11 +85,11 @@ class Job(BaseModel):
         index=True,
     )
 
-    organization: Mapped[Organization] = relationship(
+    organization: Mapped["Organization"] = relationship(
         "Organization",
         back_populates="jobs",
     )
-    applications: Mapped[list[JobApplication]] = relationship(
+    applications: Mapped[list["JobApplication"]] = relationship(
         "JobApplication",
         back_populates="job",
         cascade="all, delete-orphan",

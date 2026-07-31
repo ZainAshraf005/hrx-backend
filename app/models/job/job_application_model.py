@@ -90,5 +90,5 @@ class JobApplication(BaseModel):
         nullable=True,
     )
 
-    job: Mapped[Job] = relationship("Job", back_populates="applications")
-    organization: Mapped[Organization] = relationship("Organization")
+    job: Mapped["Job"] = relationship("Job", back_populates="applications")
+    organization: Mapped["Organization"] = relationship("Organization")

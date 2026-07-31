@@ -23,7 +23,7 @@ class Organization(BaseModel):
         server_default="Asia/Karachi",
     )
 
-    jobs: Mapped[list[Job]] = relationship(
+    jobs: Mapped[list["Job"]] = relationship(
         "Job",
         back_populates="organization",
         cascade="all, delete-orphan",

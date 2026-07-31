@@ -71,6 +71,6 @@ class LeaveRequest(BaseModel):
     )
     status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped[Organization] = relationship("Organization")
-    employee: Mapped[Employee] = relationship("Employee")
-    status_changed_by: Mapped[User | None] = relationship("User")
+    organization: Mapped["Organization"] = relationship("Organization")
+    employee: Mapped["Employee"] = relationship("Employee")
+    status_changed_by: Mapped["User | None"] = relationship("User")

@@ -35,5 +35,5 @@ class Employee(BaseModel):
     designation: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=True, default=True)
 
-    user: Mapped[User] = relationship("User", back_populates="employee")
-    organization: Mapped[Organization] = relationship("Organization")
+    user: Mapped["User"] = relationship("User", back_populates="employee")
+    organization: Mapped["Organization"] = relationship("Organization")

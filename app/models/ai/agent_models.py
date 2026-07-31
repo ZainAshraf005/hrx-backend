@@ -55,13 +55,13 @@ class AIConversation(BaseModel):
         default=AIConversationMode.READ_MODE,
     )
 
-    messages: Mapped[list[AIMessage]] = relationship(
+    messages: Mapped[list["AIMessage"]] = relationship(
         "AIMessage",
         back_populates="conversation",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    proposals: Mapped[list[AIActionProposal]] = relationship(
+    proposals: Mapped[list["AIActionProposal"]] = relationship(
         "AIActionProposal",
         back_populates="conversation",
         cascade="all, delete-orphan",

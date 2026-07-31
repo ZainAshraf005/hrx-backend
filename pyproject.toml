@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py314"
+target-version = "py313"
 
 [tool.ruff.lint]
 # FastAPI evaluates dependency declarations at import time by design.
@@ -13,5 +13,5 @@ target-version = "py314"
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-pythonVersion = "3.14"
+pythonVersion = "3.13"
 typeCheckingMode = "basic"

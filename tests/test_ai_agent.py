@@ -66,6 +66,11 @@ def test_agent_routes_are_registered():
     assert any(item["name"] == "Idempotency-Key" for item in parameters)
 
 
+def test_conversation_service_does_not_shadow_builtin_list():
+    assert not hasattr(AIConversationService, "list")
+    assert hasattr(AIConversationService, "list_conversations")
+
+
 def test_tool_catalog_is_role_scoped_and_read_mode_has_no_mutations():
     service = make_tool_service()
 

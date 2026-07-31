@@ -45,8 +45,8 @@ class User(BaseModel):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=True, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
 
-    organization: Mapped[Organization | None] = relationship("Organization")
-    employee: Mapped[Employee | None] = relationship(
+    organization: Mapped["Organization | None"] = relationship("Organization")
+    employee: Mapped["Employee | None"] = relationship(
         "Employee",
         back_populates="user",
         uselist=False,

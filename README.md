@@ -2,6 +2,18 @@
 
 FastAPI backend for HRX recruiting and organization workflows.
 
+## Python runtime
+
+Development and production are pinned to Python 3.13.14 through
+`.python-version`. Create the virtual environment with that interpreter before
+installing dependencies:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 ## AI agent
 
 The AI agent is available only to authenticated `org_admin` and `hr_manager`
