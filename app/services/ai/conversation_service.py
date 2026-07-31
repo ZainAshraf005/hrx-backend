@@ -63,7 +63,10 @@ class AIConversationService:
         await self.db.refresh(conversation)
         return conversation
 
-    async def list(self, current_user: User) -> list[AIConversation]:
+    async def list_conversations(
+        self,
+        current_user: User,
+    ) -> list[AIConversation]:
         self.tool_service.require_agent_user(current_user)
         result = await self.db.execute(
             select(AIConversation)

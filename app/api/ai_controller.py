@@ -60,7 +60,7 @@ async def list_ai_conversations(
     current_user: User = Depends(agent_user),
     service: AIConversationService = Depends(get_ai_conversation_service),
 ):
-    return await service.list(current_user)
+    return await service.list_conversations(current_user)
 
 
 @router.get("/conversations/{conversation_id}", response_model=AIConversationDetail)
