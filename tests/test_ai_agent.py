@@ -6,11 +6,13 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy.exc import MissingGreenlet
 
 import main
 from app.models.ai.agent_models import (
     AIActionProposal,
     AIConversation,
+    AIIndexTask,
     AIKnowledgeChunk,
 )
 from app.models.enums import (
@@ -150,6 +152,107 @@ def test_action_proposal_expiry_and_ownership_validation():
     with pytest.raises(HTTPException) as error:
         service._validate_pending_proposal(proposal, other_actor)
     assert error.value.status_code == 403
+
+
+def test_index_task_uses_migrated_shared_source_enum():
+    knowledge_enum: Any = AIKnowledgeChunk.__table__.c.source_type.type
+    task_enum: Any = AIIndexTask.__table__.c.source_type.type
+
+    assert task_enum.name == knowledge_enum.name == "ai_knowledge_source_type"
+
+
+@pytest.mark.asyncio
+async def test_action_failure_does_not_access_expired_actor_after_rollback():
+    class ScalarResult:
+        def __init__(self, value: Any):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+    actor_id = uuid4()
+    organization_id = uuid4()
+    proposal = AIActionProposal(
+        id=uuid4(),
+        conversation_id=uuid4(),
+        organization_id=organization_id,
+        proposed_by_user_id=actor_id,
+        operation="create_job_draft",
+        arguments={},
+        preview={},
+        resource_type="job",
+        status=AIActionProposalStatus.PENDING,
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    conversation = cast(
+        AIConversation,
+        SimpleNamespace(mode=AIConversationMode.ACTION_MODE),
+    )
+
+    class FakeSession:
+        def __init__(self):
+            self.rolled_back = False
+            self.results = [conversation, proposal, proposal]
+
+        async def get(self, _model: Any, _identifier: Any):
+            return proposal
+
+        async def execute(self, _statement: Any):
+            return ScalarResult(self.results.pop(0))
+
+        async def scalar(self, _statement: Any):
+            return None
+
+        def add(self, _instance: Any):
+            return None
+
+        async def flush(self):
+            return None
+
+        async def rollback(self):
+            self.rolled_back = True
+            proposal.status = AIActionProposalStatus.PENDING
+            proposal.confirmation_key = None
+            proposal.executed_at = None
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, _instance: Any):
+            return None
+
+    db = FakeSession()
+
+    class ExpiringActor:
+        def __init__(self):
+            self.organization_id = organization_id
+            self.role = UserRole.HR_MANAGER
+
+        @property
+        def id(self):
+            if db.rolled_back:
+                raise MissingGreenlet("expired actor requires implicit database I/O")
+            return actor_id
+
+    unused: Any = None
+    service = AIActionService(cast(Any, db), unused, unused, unused, unused)
+
+    async def fail_execution(*_args: Any, **_kwargs: Any):
+        raise RuntimeError("database action failed")
+
+    service._execute = fail_execution  # type: ignore[method-assign]
+
+    with pytest.raises(HTTPException) as error:
+        await service.confirm(
+            proposal.id,
+            cast(User, ExpiringActor()),
+            "test-confirmation-key",
+            "https://example.test",
+        )
+
+    assert error.value.status_code == 500
+    assert error.value.detail == "Action execution failed"
+    assert proposal.status == AIActionProposalStatus.FAILED
 
 
 def test_system_prompt_locks_scope_and_approval_semantics():

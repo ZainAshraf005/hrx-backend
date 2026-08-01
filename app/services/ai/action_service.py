@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -32,6 +33,8 @@ from app.services.job_application_service import JobApplicationService
 from app.services.job_service import JobService
 from app.services.organization_service import OrganizationService
 
+logger = logging.getLogger(__name__)
+
 
 class AIActionService:
     def __init__(
@@ -58,6 +61,7 @@ class AIActionService:
         if not confirmation_key.strip():
             raise HTTPException(status_code=400, detail="Idempotency-Key is required")
 
+        actor_user_id = current_user.id
         seed_proposal = await self.db.get(AIActionProposal, proposal_id)
         if not seed_proposal:
             raise HTTPException(status_code=404, detail="Action proposal not found")
@@ -118,7 +122,7 @@ class AIActionService:
         proposal.executed_at = datetime.now(UTC)
         initial_audit = AIActionAudit(
             organization_id=proposal.organization_id,
-            actor_user_id=current_user.id,
+            actor_user_id=actor_user_id,
             conversation_id=proposal.conversation_id,
             proposal_id=proposal.id,
             event_type="action_execution_started",
@@ -149,7 +153,7 @@ class AIActionService:
                 self.db.add(
                     self._result_audit(
                         persisted,
-                        current_user,
+                        actor_user_id,
                         "action_executed_with_warning",
                         warning_result,
                     )
@@ -157,11 +161,12 @@ class AIActionService:
                 await self.db.commit()
                 await self.db.refresh(persisted)
                 return persisted
-            await self._mark_failed(persisted, current_user, str(exc.detail))
+            await self._mark_failed(persisted, actor_user_id, str(exc.detail))
             raise
         # The action boundary must convert unknown service failures into a
         # stable API error after recording the proposal outcome.
-        except Exception:  # noqa: BLE001
+        except Exception:
+            logger.exception("AI action execution failed for proposal %s", proposal_id)
             await self.db.rollback()
             persisted = await self._locked_proposal(proposal_id)
             if persisted.status == AIActionProposalStatus.EXECUTED:
@@ -174,7 +179,7 @@ class AIActionService:
                 self.db.add(
                     self._result_audit(
                         persisted,
-                        current_user,
+                        actor_user_id,
                         "action_executed_with_warning",
                         warning_result,
                     )
@@ -184,7 +189,7 @@ class AIActionService:
                 return persisted
             await self._mark_failed(
                 persisted,
-                current_user,
+                actor_user_id,
                 "Action execution failed",
             )
             raise HTTPException(status_code=500, detail="Action execution failed")
@@ -199,7 +204,7 @@ class AIActionService:
         self.db.add(
             self._result_audit(
                 proposal,
-                current_user,
+                actor_user_id,
                 "action_executed",
                 result_payload,
             )
@@ -365,7 +370,7 @@ class AIActionService:
     async def _mark_failed(
         self,
         proposal: AIActionProposal,
-        current_user: User,
+        actor_user_id: UUID,
         error: str,
     ) -> None:
         proposal.status = AIActionProposalStatus.FAILED
@@ -373,7 +378,7 @@ class AIActionService:
         self.db.add(
             self._result_audit(
                 proposal,
-                current_user,
+                actor_user_id,
                 "action_failed",
                 {"error": error},
             )
@@ -383,13 +388,13 @@ class AIActionService:
     def _result_audit(
         self,
         proposal: AIActionProposal,
-        current_user: User,
+        actor_user_id: UUID,
         event_type: str,
         details: dict[str, Any],
     ) -> AIActionAudit:
         return AIActionAudit(
             organization_id=proposal.organization_id,
-            actor_user_id=current_user.id,
+            actor_user_id=actor_user_id,
             conversation_id=proposal.conversation_id,
             proposal_id=proposal.id,
             event_type=event_type,

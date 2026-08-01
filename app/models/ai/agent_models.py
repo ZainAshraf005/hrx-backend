@@ -264,7 +264,7 @@ class AIIndexTask(BaseModel):
         SAEnum(
             AIKnowledgeSourceType,
             values_callable=enum_values,
-            name="ai_index_task_source_type",
+            name="ai_knowledge_source_type",
         ),
         nullable=False,
     )
