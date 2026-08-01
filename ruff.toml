@@ -1,0 +1,7 @@
+target-version = "py313"
+
+[lint]
+
+[lint.per-file-ignores]
+"app/api/*.py" = ["B008"]
+"app/dependencies/*.py" = ["B008"]
