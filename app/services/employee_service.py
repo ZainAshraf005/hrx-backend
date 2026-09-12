@@ -29,7 +29,7 @@ class EmployeeService:
         self.email_service = email_service
 
     async def create_employee(self, data: EmployeeCreate, current_user: User, frontend_url: str = FRONTEND_URL):
-        organization_id = self._require_org_admin_organization(current_user)
+        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
         email = normalize_email(str(data.email))
 
         existing_user = await self._get_user_by_email(email)
@@ -71,7 +71,7 @@ class EmployeeService:
         return await self.get_employee(employee.id, current_user)
 
     async def get_employees(self, current_user: User, include_inactive: bool = False):
-        organization_id = self._require_org_admin_organization(current_user)
+        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
         query = (
             select(Employee)
             .options(selectinload(Employee.user))
@@ -85,7 +85,7 @@ class EmployeeService:
         return result.scalars().all()
 
     async def get_employee(self, employee_id: UUID, current_user: User):
-        organization_id = self._require_org_admin_organization(current_user)
+        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
         result = await self.db.execute(
             select(Employee)
             .options(selectinload(Employee.user))
@@ -131,6 +131,7 @@ class EmployeeService:
         return await self.get_employee(employee.id, current_user)
 
     async def delete_employee(self, employee_id: UUID, current_user: User):
+        self._require_org_admin_organization(current_user)
         employee = await self.get_employee(employee_id, current_user)
         employee.is_active = False
         employee.user.is_active = False
@@ -216,5 +217,13 @@ class EmployeeService:
 
     def _require_org_admin_organization(self, current_user: User) -> UUID:
         if current_user.role != UserRole.ORG_ADMIN or not current_user.organization_id:
+            raise HTTPException(status_code=403, detail="Not Authorized")
+        return current_user.organization_id
+
+    def _require_org_admin_or_hr_manager_organization(self, current_user: User) -> UUID:
+        if (
+            current_user.role not in {UserRole.ORG_ADMIN, UserRole.HR_MANAGER}
+            or not current_user.organization_id
+        ):
             raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id
