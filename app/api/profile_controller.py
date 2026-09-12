@@ -3,13 +3,13 @@ from fastapi import APIRouter, Depends
 from app.dependencies.auth import get_current_user
 from app.dependencies.services import get_auth_service
 from app.models.user.user_model import User
-from app.schemas.auth_schema import AuthUserResponse, ProfileUpdateRequest
+from app.schemas.auth_schema import ProfileResponse, ProfileUpdateRequest
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
-@router.get("", response_model=AuthUserResponse)
+@router.get("", response_model=ProfileResponse)
 async def get_profile(
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
@@ -17,7 +17,7 @@ async def get_profile(
     return await service.get_profile(current_user)
 
 
-@router.put("", response_model=AuthUserResponse)
+@router.put("", response_model=ProfileResponse)
 async def update_profile(
     payload: ProfileUpdateRequest,
     current_user: User = Depends(get_current_user),

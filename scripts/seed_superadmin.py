@@ -29,6 +29,7 @@ async def seed_superadmin() -> None:
 
         if not user:
             user = User(
+                name="",
                 email=normalized_email,
                 password_hash=hash_password(password),
                 organization_id=None,

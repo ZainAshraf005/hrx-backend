@@ -39,6 +39,7 @@ class EmployeeService:
             await self._ensure_no_other_active_hr(organization_id)
 
         user = User(
+            name="",
             email=email,
             password_hash=None,
             organization_id=organization_id,

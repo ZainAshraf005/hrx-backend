@@ -62,6 +62,7 @@ class AuthService:
             raise HTTPException(status_code=400, detail="User already exists")
 
         user = User(
+            name="",
             email=invite.email,
             password_hash=hash_password(password),
             organization_id=invite.organization_id,
@@ -172,14 +173,15 @@ class AuthService:
         user = await self._get_user_by_id(current_user.id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return self._serialize_user(user)
+        return self._serialize_profile(user)
 
     async def update_profile(self, current_user: User, data: ProfileUpdateRequest):
         user = await self._get_user_by_id(current_user.id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role == UserRole.SUPERADMIN:
-            raise HTTPException(status_code=403, detail="Profile update is not allowed for superadmin")
+       
+        if data.name is not None:
+            user.name = data.name
 
         if data.email is not None:
             email = normalize_email(str(data.email))
@@ -196,18 +198,12 @@ class AuthService:
                 raise HTTPException(status_code=400, detail="Organization not found")
             await self._apply_organization_profile_update(user.organization, data.organization)
 
-        employee_fields = {"first_name", "last_name", "phone"}
-        if employee_fields.intersection(data.model_fields_set):
+        if "phone" in data.model_fields_set:
             if user.role not in {UserRole.EMPLOYEE, UserRole.HR_MANAGER}:
                 raise HTTPException(status_code=403, detail="Employee profile update is only allowed for employees")
             if not user.employee:
                 raise HTTPException(status_code=400, detail="Employee profile not found")
-            if data.first_name is not None:
-                user.employee.first_name = data.first_name
-            if data.last_name is not None:
-                user.employee.last_name = data.last_name
-            if "phone" in data.model_fields_set:
-                user.employee.phone = data.phone
+            user.employee.phone = data.phone
 
         await self.db.commit()
         return await self.get_profile(user)
@@ -308,6 +304,12 @@ class AuthService:
             "organization_id": user.organization_id,
             "organization": self._serialize_organization(user.organization),
             "employee": self._serialize_employee(user.employee),
+        }
+
+    def _serialize_profile(self, user: User):
+        return {
+            **self._serialize_user(user),
+            "name": user.name,
         }
 
     def _serialize_organization(self, organization: Organization | None):
