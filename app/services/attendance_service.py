@@ -291,7 +291,10 @@ class AttendanceService:
         return ZoneInfo(timezone_name)
 
     def _require_hr_organization(self, current_user: User) -> UUID:
-        if current_user.role != UserRole.HR_MANAGER or not current_user.organization_id:
+        if (
+            current_user.role not in {UserRole.HR_MANAGER, UserRole.ORG_ADMIN}
+            or not current_user.organization_id
+        ):
             raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id
 

@@ -66,8 +66,7 @@ class LeaveService:
         )
         self.db.add(request)
         await self.db.commit()
-        await self.db.refresh(request)
-        return request
+        return await self._leave_with_employee(request.id)
 
     async def get_my_leaves(
         self,
@@ -95,17 +94,13 @@ class LeaveService:
         organization_id = self._require_leave_staff(current_user)
         query = (
             select(LeaveRequest)
-            .join(LeaveRequest.employee)
-            .join(Employee.user)
             .options(
                 selectinload(LeaveRequest.employee).selectinload(Employee.user)
             )
             .where(LeaveRequest.organization_id == organization_id)
             .order_by(LeaveRequest.created_at.desc())
         )
-        if current_user.role == UserRole.ORG_ADMIN:
-            query = query.where(User.role == UserRole.HR_MANAGER)
-        elif employee_id is not None:
+        if employee_id is not None:
             query = query.where(LeaveRequest.employee_id == employee_id)
         if status is not None:
             query = query.where(LeaveRequest.status == status)
@@ -142,8 +137,7 @@ class LeaveService:
         request.status_changed_at = self._now()
         request.status_reason = None
         await self.db.commit()
-        await self.db.refresh(request)
-        return request
+        return await self._leave_with_employee(request.id)
 
     async def change_status(
         self,
@@ -200,7 +194,7 @@ class LeaveService:
         request.status_changed_at = self._now()
         request.status_reason = reason
         await self.db.commit()
-        await self.db.refresh(request)
+        request = await self._leave_with_employee(request.id)
 
         try:
             await self.email_service.send_leave_status_email(
@@ -242,6 +236,16 @@ class LeaveService:
             raise HTTPException(status_code=403, detail="Active employee profile required")
         return employee
 
+    async def _leave_with_employee(self, leave_id: UUID) -> LeaveRequest:
+        result = await self.db.execute(
+            select(LeaveRequest)
+            .options(
+                selectinload(LeaveRequest.employee).selectinload(Employee.user)
+            )
+            .where(LeaveRequest.id == leave_id)
+        )
+        return result.scalar_one()
+
     def _require_leave_staff(self, current_user: User) -> UUID:
         if (
             current_user.role not in {UserRole.HR_MANAGER, UserRole.ORG_ADMIN}
@@ -255,18 +259,14 @@ class LeaveService:
         request: LeaveRequest,
         current_user: User,
     ):
-        target_user = request.employee.user
+        if current_user.role == UserRole.ORG_ADMIN:
+            return
         if current_user.role == UserRole.HR_MANAGER:
-            if target_user.id == current_user.id:
+            if request.employee.user.id == current_user.id:
                 raise HTTPException(
                     status_code=403,
                     detail="HR manager cannot decide their own leave request",
                 )
-            return
-        if (
-            current_user.role == UserRole.ORG_ADMIN
-            and target_user.role == UserRole.HR_MANAGER
-        ):
             return
         raise HTTPException(status_code=403, detail="Not Authorized")
 
