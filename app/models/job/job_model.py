@@ -18,7 +18,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base_model import BaseModel
 from app.models.enums import (
     JobEmploymentType,
-    JobStatus,
     JobWorkplaceType,
     SalaryPeriod,
     enum_values,
@@ -57,13 +56,6 @@ class Job(BaseModel):
         nullable=False,
         default=JobWorkplaceType.ONSITE,
     )
-    status: Mapped[JobStatus] = mapped_column(
-        SAEnum(JobStatus, values_callable=enum_values, name="job_status"),
-        nullable=False,
-        default=JobStatus.DRAFT,
-        index=True,
-    )
-
     salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     salary_currency: Mapped[str | None] = mapped_column(
@@ -92,7 +84,7 @@ class Job(BaseModel):
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
-        nullable=True,
+        nullable=False,
         default=True,
         index=True,
     )

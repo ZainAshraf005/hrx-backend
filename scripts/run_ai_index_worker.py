@@ -3,11 +3,11 @@ import asyncio
 from app.core.config import AI_INDEX_WORKER_POLL_SECONDS
 from app.core.database import AsyncSessionLocal
 from app.services.ai.indexing_service import IndexTaskRunner, KnowledgeIndexService
-from app.services.ai.provider import GeminiAIProvider
+from app.services.ai.provider import XkiroAIProvider
 
 
 async def run() -> None:
-    provider = GeminiAIProvider()
+    provider = XkiroAIProvider()
     recovered = False
     while True:
         async with AsyncSessionLocal() as db:

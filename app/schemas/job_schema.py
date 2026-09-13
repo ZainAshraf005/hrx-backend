@@ -8,15 +8,11 @@ from app.models.enums import (
     JobWorkplaceType,
 )
 from app.models.enums import (
-    JobStatus as JobStatusEnum,
-)
-from app.models.enums import (
     SalaryPeriod as SalaryPeriodEnum,
 )
 
 EmploymentType = JobEmploymentType
 WorkplaceType = JobWorkplaceType
-JobStatus = JobStatusEnum
 SalaryPeriod = SalaryPeriodEnum
 
 
@@ -27,7 +23,7 @@ class JobBase(BaseModel):
     location: str | None = None
     employment_type: EmploymentType = JobEmploymentType.FULL_TIME
     workplace_type: WorkplaceType = JobWorkplaceType.ONSITE
-    status: JobStatus = JobStatusEnum.DRAFT
+    is_active: bool = True
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = "USD"
@@ -49,7 +45,6 @@ class JobUpdate(BaseModel):
     location: str | None = None
     employment_type: EmploymentType | None = None
     workplace_type: WorkplaceType | None = None
-    status: JobStatus | None = None
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = None
@@ -73,7 +68,6 @@ class JobResponse(BaseModel):
     location: str | None = None
     employment_type: EmploymentType
     workplace_type: WorkplaceType
-    status: JobStatus
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = None

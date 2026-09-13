@@ -30,15 +30,22 @@ The agent uses:
 
 - typed service tools for counts, filters, reports, and mutations;
 - existing persisted candidate rankings for top-applicant answers;
+- Xkiro's OpenAI-compatible chat API with Mistral Large for agent responses,
+  resume parsing, and candidate ranking;
 - Gemini embeddings and pgvector for organization-scoped semantic retrieval;
 - a PostgreSQL outbox and separate worker for durable re-indexing.
 
 ### Configuration
 
-In addition to the existing `DATABASE_URL` and `GEMINI_API_KEY` settings:
+Generation uses Xkiro. `GEMINI_API_KEY` is still required only by semantic
+indexing because the existing database vectors were built with Gemini's
+768-dimensional embedding model.
 
 ```dotenv
-GEMINI_AGENT_MODEL=gemini-3.6-flash
+XKIRO_API_KEY=your-xkiro-api-key
+XKIRO_BASE_URL=https://api.xkiro.com/v1
+XKIRO_MODEL=mistralai/mistral-large-2512
+GEMINI_API_KEY=your-gemini-api-key
 GEMINI_EMBEDDING_MODEL=gemini-embedding-2
 GEMINI_EMBEDDING_DIMENSIONS=768
 AI_ACTION_PROPOSAL_TTL_SECONDS=600
@@ -47,8 +54,10 @@ AI_INDEX_WORKER_POLL_SECONDS=2
 AI_INDEX_WORKER_MAX_ATTEMPTS=5
 ```
 
-The embedding dimension is part of the database schema. Changing it requires a
-new migration and complete re-index.
+The Xkiro base URL and model above are the defaults and only need to be set when
+overriding them. The embedding dimension is part of the database schema.
+Changing the embedding provider or dimension requires a new migration and
+complete re-index.
 
 ### Database and worker
 

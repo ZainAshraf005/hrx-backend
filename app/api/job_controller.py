@@ -1,6 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Response,
+    UploadFile,
+    status,
+)
 
 from app.dependencies.auth import require_roles
 from app.dependencies.services import get_job_application_service, get_job_service
@@ -11,7 +19,7 @@ from app.schemas.job_application_schema import (
     JobApplicationStatusUpdate,
     ResumeParseResponse,
 )
-from app.schemas.job_schema import JobCreate, JobResponse, JobStatus, JobUpdate
+from app.schemas.job_schema import JobCreate, JobResponse, JobUpdate
 from app.services.job_application_service import (
     JobApplicationService,
     rerank_job_applications_for_job,
@@ -32,19 +40,25 @@ async def create_job(
 
 @router.get("/", response_model=list[JobResponse])
 async def list_jobs(
-    status: JobStatus | None = None,
+    is_active: bool | None = None,
+    current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobService = Depends(get_job_service),
 ):
-    return await service.get_jobs(status)
+    return await service.get_jobs(current_user, is_active)
 
 
 @router.get("/organization/{organization_id}", response_model=list[JobResponse])
 async def list_jobs_by_organization(
     organization_id: UUID,
-    status: JobStatus | None = None,
+    is_active: bool | None = None,
+    current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobService = Depends(get_job_service),
 ):
-    return await service.get_jobs_by_organization(organization_id, status)
+    return await service.get_jobs_by_organization(
+        organization_id,
+        current_user,
+        is_active,
+    )
 
 
 @router.get("/{job_id}/applications", response_model=list[JobApplicationResponse])
@@ -55,6 +69,21 @@ async def list_job_applications(
     service: JobApplicationService = Depends(get_job_application_service),
 ):
     return await service.get_applications_for_job(job_id, current_user, sort)
+
+
+@router.post(
+    "/{job_id}/applications/rerank",
+    response_model=list[JobApplicationResponse],
+)
+async def rerank_job_applications(
+    job_id: UUID,
+    current_user: User = Depends(require_roles("org_admin", "hr_manager")),
+    service: JobApplicationService = Depends(get_job_application_service),
+):
+    return await service.rerank_applications_for_job_as_manager(
+        job_id,
+        current_user,
+    )
 
 
 @router.post("/{job_id}/applications/parse-resume", response_model=ResumeParseResponse)
@@ -84,22 +113,41 @@ async def get_job_application(
     return await service.get_application(application_id, current_user)
 
 
-@router.put("/applications/{application_id}/status", response_model=JobApplicationResponse)
+@router.put(
+    "/applications/{application_id}/status", response_model=JobApplicationResponse
+)
 async def update_job_application_status(
     application_id: UUID,
     payload: JobApplicationStatusUpdate,
     current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobApplicationService = Depends(get_job_application_service),
 ):
-    return await service.update_application_status(application_id, payload, current_user)
+    return await service.update_application_status(
+        application_id, payload, current_user
+    )
+
+
+@router.delete(
+    "/applications/{application_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def delete_job_application(
+    application_id: UUID,
+    current_user: User = Depends(require_roles("org_admin", "hr_manager")),
+    service: JobApplicationService = Depends(get_job_application_service),
+):
+    await service.delete_application(application_id, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: UUID,
+    current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobService = Depends(get_job_service),
 ):
-    return await service.get_job(job_id)
+    return await service.get_job(job_id, current_user)
 
 
 @router.put("/{job_id}", response_model=JobResponse)
@@ -115,10 +163,15 @@ async def update_job(
     return job
 
 
-@router.delete("/{job_id}", response_model=JobResponse)
+@router.delete(
+    "/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 async def delete_job(
     job_id: UUID,
     current_user: User = Depends(require_roles("org_admin", "hr_manager")),
     service: JobService = Depends(get_job_service),
 ):
-    return await service.delete_job(job_id, current_user)
+    await service.delete_job(job_id, current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

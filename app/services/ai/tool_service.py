@@ -22,7 +22,6 @@ from app.models.enums import (
     AIIndexTaskStatus,
     AIKnowledgeSourceType,
     CandidateRankingStatus,
-    JobStatus,
     UserRole,
 )
 from app.models.job.job_application_model import JobApplication
@@ -79,7 +78,9 @@ class AgentToolService:
         self.organization_service = organization_service
         self._definitions = self._build_definitions()
 
-    def definitions(self, mode: AIConversationMode, current_user: User) -> list[AgentToolDefinition]:
+    def definitions(
+        self, mode: AIConversationMode, current_user: User
+    ) -> list[AgentToolDefinition]:
         self.require_agent_user(current_user)
         definitions = [
             definition
@@ -141,9 +142,17 @@ class AgentToolService:
             )
             return {"ok": True, **result}
         except ValidationError as exc:
-            return {"ok": False, "error": "Invalid tool arguments", "details": exc.errors()}
+            return {
+                "ok": False,
+                "error": "Invalid tool arguments",
+                "details": exc.errors(),
+            }
         except HTTPException as exc:
-            return {"ok": False, "error": str(exc.detail), "status_code": exc.status_code}
+            return {
+                "ok": False,
+                "error": str(exc.detail),
+                "status_code": exc.status_code,
+            }
         # Tool implementations are an execution boundary; return a sanitized
         # result so one tool failure cannot abort the whole agent turn.
         except Exception:  # noqa: BLE001
@@ -156,7 +165,9 @@ class AgentToolService:
     @staticmethod
     def require_agent_user(current_user: User) -> UUID:
         if current_user.role not in READ_ROLES or not current_user.organization_id:
-            raise HTTPException(status_code=403, detail="AI agent is not available for this role")
+            raise HTTPException(
+                status_code=403, detail="AI agent is not available for this role"
+            )
         return current_user.organization_id
 
     async def _tool_get_organization(
@@ -184,8 +195,8 @@ class AgentToolService:
             query = query.where(Job.title.ilike(f"%{params.title}%"))
         if params.department:
             query = query.where(Job.department.ilike(f"%{params.department}%"))
-        if params.status:
-            query = query.where(Job.status == params.status)
+        if params.is_active is not None:
+            query = query.where(Job.is_active.is_(params.is_active))
         query = self._apply_date_range(
             query,
             Job.created_at,
@@ -275,7 +286,8 @@ class AgentToolService:
             query = query.order_by(
                 case(
                     (
-                        JobApplication.ranking_status == CandidateRankingStatus.COMPLETED,
+                        JobApplication.ranking_status
+                        == CandidateRankingStatus.COMPLETED,
                         0,
                     ),
                     else_=1,
@@ -290,8 +302,8 @@ class AgentToolService:
             select(func.count()).select_from(count_query.subquery())
         )
         applications = (
-            await self.db.execute(query.limit(params.limit))
-        ).scalars().all()
+            (await self.db.execute(query.limit(params.limit))).scalars().all()
+        )
         return {
             "kind": "applications",
             "data": [self._application_data(item) for item in applications],
@@ -355,7 +367,8 @@ class AgentToolService:
         )
         if params.source_type:
             query = query.where(
-                AIKnowledgeChunk.source_type == AIKnowledgeSourceType(params.source_type)
+                AIKnowledgeChunk.source_type
+                == AIKnowledgeSourceType(params.source_type)
             )
         rows = (await self.db.execute(query)).all()
         pending = await self.db.scalar(
@@ -419,7 +432,7 @@ class AgentToolService:
         current_user: User,
     ) -> dict[str, Any]:
         values = params.model_dump(mode="json")
-        values["status"] = JobStatus.DRAFT.value
+        values["is_active"] = False
         JobCreate.model_validate(values)
         self.job_service._validate_salary_range(
             params.salary_min,
@@ -431,7 +444,7 @@ class AgentToolService:
             operation="create_job_draft",
             arguments=values,
             preview={
-                "summary": f"Create draft job “{params.title}”",
+                "summary": f"Create inactive job draft “{params.title}”",
                 "before": None,
                 "after": values,
             },
@@ -552,11 +565,15 @@ class AgentToolService:
         conversation_id: UUID,
         current_user: User,
     ) -> dict[str, Any]:
-        employee = await self.employee_service.get_employee(params.employee_id, current_user)
+        employee = await self.employee_service.get_employee(
+            params.employee_id, current_user
+        )
         changes = params.model_dump(mode="json", exclude_unset=True)
         changes.pop("employee_id", None)
         if not changes:
-            raise HTTPException(status_code=400, detail="No employee changes were provided")
+            raise HTTPException(
+                status_code=400, detail="No employee changes were provided"
+            )
         EmployeeUpdate.model_validate(changes)
         before = self._employee_data(employee)
         return await self._create_proposal(
@@ -580,7 +597,9 @@ class AgentToolService:
         conversation_id: UUID,
         current_user: User,
     ) -> dict[str, Any]:
-        employee = await self.employee_service.get_employee(params.employee_id, current_user)
+        employee = await self.employee_service.get_employee(
+            params.employee_id, current_user
+        )
         before = self._employee_data(employee)
         return await self._create_proposal(
             conversation_id,
@@ -603,10 +622,14 @@ class AgentToolService:
         conversation_id: UUID,
         current_user: User,
     ) -> dict[str, Any]:
-        organization = await self.organization_service.get_own_organization(current_user)
+        organization = await self.organization_service.get_own_organization(
+            current_user
+        )
         changes = params.model_dump(mode="json", exclude_unset=True)
         if not changes:
-            raise HTTPException(status_code=400, detail="No organization changes were provided")
+            raise HTTPException(
+                status_code=400, detail="No organization changes were provided"
+            )
         OrganizationUpdate.model_validate(changes)
         before = self._organization_data(organization)
         return await self._create_proposal(
@@ -668,7 +691,9 @@ class AgentToolService:
                 "operation": proposal.operation,
                 "preview": proposal.preview,
                 "resource_type": proposal.resource_type,
-                "resource_id": str(proposal.resource_id) if proposal.resource_id else None,
+                "resource_id": str(proposal.resource_id)
+                if proposal.resource_id
+                else None,
                 "expires_at": proposal.expires_at.isoformat(),
             },
         }
@@ -682,7 +707,7 @@ class AgentToolService:
     ) -> dict[str, tuple[AgentToolDefinition, set[UserRole]]]:
         descriptions = {
             "get_organization": "Get the caller's HRX organization details.",
-            "search_jobs": "Search and filter jobs in the caller's organization.",
+            "search_jobs": "Search and filter active or inactive jobs in the caller's organization.",
             "get_job": "Get one exact organization job by UUID.",
             "count_applications": "Count applications, optionally by job, status, or date range.",
             "list_applications": "List organization applications with controlled filters and ordering.",
@@ -691,7 +716,7 @@ class AgentToolService:
             "semantic_search_recruiting": "Semantically search organization job and applicant text. Use for concepts or skills, not counts or ranking.",
             "list_employees": "List employees. Available only to organization admins.",
             "get_employee": "Get one exact employee. Available only to organization admins.",
-            "propose_create_job_draft": "Prepare, but do not execute, creation of one draft job.",
+            "propose_create_job_draft": "Prepare, but do not execute, creation of one inactive job draft.",
             "propose_update_job": "Prepare, but do not execute, one exact job update.",
             "propose_deactivate_job": "Prepare, but do not execute, deactivation of one exact job.",
             "propose_change_application_status": "Prepare, but do not execute, one exact application status change. Map 'approve' to shortlisted.",
@@ -700,9 +725,7 @@ class AgentToolService:
             "propose_deactivate_employee": "Prepare, but do not execute, one employee deactivation. Organization admins only.",
             "propose_update_organization": "Prepare, but do not execute, an organization update. Organization admins only.",
         }
-        mutation_names = {
-            name for name in descriptions if name.startswith("propose_")
-        }
+        mutation_names = {name for name in descriptions if name.startswith("propose_")}
         org_admin_names = {
             "list_employees",
             "get_employee",
@@ -759,11 +782,7 @@ class AgentToolService:
             if reference and reference.startswith("#/$defs/"):
                 name = reference.rsplit("/", 1)[-1]
                 return resolve(definitions[name])
-            return {
-                key: resolve(item)
-                for key, item in value.items()
-                if key != "$defs"
-            }
+            return {key: resolve(item) for key, item in value.items() if key != "$defs"}
 
         return resolve(schema)
 
@@ -805,7 +824,6 @@ class AgentToolService:
             "location": job.location,
             "employment_type": self._enum_value(job.employment_type),
             "workplace_type": self._enum_value(job.workplace_type),
-            "status": self._enum_value(job.status),
             "salary_min": job.salary_min,
             "salary_max": job.salary_max,
             "salary_currency": job.salary_currency,
@@ -827,7 +845,6 @@ class AgentToolService:
             "location": job.location,
             "employment_type": self._enum_value(job.employment_type),
             "workplace_type": self._enum_value(job.workplace_type),
-            "status": self._enum_value(job.status),
             "experience_level": job.experience_level,
             "is_active": job.is_active,
             "created_at": job.created_at.isoformat(),

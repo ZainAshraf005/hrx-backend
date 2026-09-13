@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.enums import (
     CandidateRankingRecommendation as CandidateRankingRecommendationEnum,
@@ -69,10 +69,32 @@ class PublicResumeParseResponse(BaseModel):
 
 class CandidateRankingResult(BaseModel):
     score: int = Field(ge=0, le=100)
+    skills_score: int = Field(ge=0, le=40)
+    experience_score: int = Field(ge=0, le=30)
+    education_score: int = Field(ge=0, le=10)
+    role_fit_score: int = Field(ge=0, le=15)
+    evidence_quality_score: int = Field(ge=0, le=5)
     recommendation: CandidateRankingRecommendation
     rationale: str
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_score_and_recommendation(self):
+        self.score = (
+            self.skills_score
+            + self.experience_score
+            + self.education_score
+            + self.role_fit_score
+            + self.evidence_quality_score
+        )
+        if self.score >= 80:
+            self.recommendation = CandidateRankingRecommendation.STRONG_MATCH
+        elif self.score >= 50:
+            self.recommendation = CandidateRankingRecommendation.POSSIBLE_MATCH
+        else:
+            self.recommendation = CandidateRankingRecommendation.NOT_RECOMMENDED
+        return self
 
 
 class JobApplicationCreate(BaseModel):

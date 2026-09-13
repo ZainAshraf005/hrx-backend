@@ -180,9 +180,7 @@ class AIConversationService:
                 detail=f"Conversation mode is {conversation.mode.value}",
             )
         await self.db.execute(
-            select(User.id)
-            .where(User.id == current_user.id)
-            .with_for_update()
+            select(User.id).where(User.id == current_user.id).with_for_update()
         )
         stale_cutoff = datetime.now(UTC) - timedelta(minutes=15)
         stale_result = await self.db.execute(
@@ -264,9 +262,7 @@ class AIConversationService:
                 Organization,
                 conversation.organization_id,
             )
-            timezone_name = (
-                organization.timezone if organization else "Asia/Karachi"
-            )
+            timezone_name = organization.timezone if organization else "Asia/Karachi"
             system_instruction = self._system_instruction(
                 conversation,
                 timezone_name,
@@ -298,7 +294,7 @@ class AIConversationService:
                         "error": "Only one mutation can be proposed per turn.",
                     }
                     for call in completion.tool_calls:
-                        contents.append(function_result_content(call.name, error_result))
+                        contents.append(function_result_content(call, error_result))
                     continue
 
                 for call in completion.tool_calls:
@@ -312,7 +308,9 @@ class AIConversationService:
                                 "to select one exact record before proposing an action."
                             ),
                         }
-                    elif mutation_proposed and self.tool_service.is_mutation_tool(call.name):
+                    elif mutation_proposed and self.tool_service.is_mutation_tool(
+                        call.name
+                    ):
                         result = {
                             "ok": False,
                             "error": "Only one mutation can be proposed per turn.",
@@ -325,12 +323,10 @@ class AIConversationService:
                             conversation.mode,
                             current_user,
                         )
-                    contents.append(function_result_content(call.name, result))
+                    contents.append(function_result_content(call, result))
                     if result.get("ok") and result.get("kind"):
                         block = {
-                            key: value
-                            for key, value in result.items()
-                            if key != "ok"
+                            key: value for key, value in result.items() if key != "ok"
                         }
                         structured_results.append(block)
                         event_name = (
@@ -341,7 +337,12 @@ class AIConversationService:
                         yield self._event(event_name, block)
                         if (
                             result.get("kind")
-                            in {"jobs", "applications", "ranked_applicants", "employees"}
+                            in {
+                                "jobs",
+                                "applications",
+                                "ranked_applicants",
+                                "employees",
+                            }
                             and result.get("count", 0) > 1
                         ):
                             ambiguous_kinds.add(
@@ -481,8 +482,8 @@ Security and actions:
 - Propose exactly one mutation per turn.
 - If a target is ambiguous, list the exact matches and ask the user to select one.
 - Treat “approve application” as “shortlist application” and state the exact status.
-- New jobs must always be draft. Generate narrative job text when requested but do
-  not invent salary, location, or department.
+- New jobs must always be created inactive. Generate narrative job text when
+  requested, but do not invent salary, location, or department.
 
 Response:
 - Be concise and identify source records using their returned IDs.

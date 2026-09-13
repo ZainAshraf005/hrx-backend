@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -25,7 +26,7 @@ from app.schemas.organization_schema import OrganizationUpdate
 from app.services.ai.action_service import AIActionService
 from app.services.ai.conversation_service import AIConversationService
 from app.services.ai.indexing_service import KnowledgeIndexService
-from app.services.ai.provider import AIProvider, GeminiAIProvider
+from app.services.ai.provider import AIProvider, XkiroAIProvider
 from app.services.ai.tool_schemas import (
     CreateJobDraftParams,
     InviteEmployeeParams,
@@ -76,7 +77,9 @@ def test_conversation_service_does_not_shadow_builtin_list():
 def test_tool_catalog_is_role_scoped_and_read_mode_has_no_mutations():
     service = make_tool_service()
 
-    hr_read = service.definitions(AIConversationMode.READ_MODE, user(UserRole.HR_MANAGER))
+    hr_read = service.definitions(
+        AIConversationMode.READ_MODE, user(UserRole.HR_MANAGER)
+    )
     hr_action = service.definitions(
         AIConversationMode.ACTION_MODE,
         user(UserRole.HR_MANAGER),
@@ -102,7 +105,7 @@ def test_employee_and_superadmin_cannot_use_agent():
         assert error.value.status_code == 403
 
 
-def test_tool_json_schemas_are_inlined_for_gemini():
+def test_tool_json_schemas_are_inlined_for_provider():
     definitions = make_tool_service().definitions(
         AIConversationMode.ACTION_MODE,
         user(UserRole.ORG_ADMIN),
@@ -129,6 +132,30 @@ def test_employee_tools_cannot_assign_privileged_roles():
 def test_job_draft_params_do_not_allow_publishing_status():
     schema = CreateJobDraftParams.model_json_schema()
     assert "status" not in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_confirmed_ai_job_draft_is_created_inactive():
+    job_service = SimpleNamespace(create_job=AsyncMock())
+    unused: Any = None
+    service = AIActionService(
+        unused,
+        job_service,
+        unused,
+        unused,
+        unused,
+    )
+    proposal = SimpleNamespace(
+        operation="create_job_draft",
+        arguments={"title": "Backend Engineer", "description": "Build APIs."},
+    )
+    actor = user(UserRole.HR_MANAGER)
+
+    await service._execute(cast(Any, proposal), actor, "https://example.test")
+
+    payload = job_service.create_job.await_args.args[0]
+    assert payload.is_active is False
+    assert "status" not in type(payload).model_fields
 
 
 def test_action_proposal_expiry_and_ownership_validation():
@@ -270,7 +297,7 @@ def test_system_prompt_locks_scope_and_approval_semantics():
     assert "HRX-supported workflows" in prompt
     assert "Semantic search" in prompt
     assert "shortlist application" in prompt
-    assert "New jobs must always be draft" in prompt
+    assert "New jobs must always be created inactive" in prompt
     assert "never claim a proposal" in prompt.lower()
     assert "explicit confirmation" in prompt.lower()
 
@@ -293,7 +320,7 @@ def test_vector_dimension_and_tenant_column_are_fixed():
     assert embedding_type.dim == 768
     assert AIKnowledgeChunk.__table__.c.organization_id.nullable is False
     with pytest.raises(ValueError):
-        GeminiAIProvider(api_key="test", embedding_dimensions=1536)
+        XkiroAIProvider(api_key="test", embedding_dimensions=1536)
 
 
 def test_mutations_are_mapped_to_ambiguous_result_types():

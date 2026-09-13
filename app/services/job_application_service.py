@@ -1,18 +1,20 @@
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import case, select
+from sqlalchemy import case, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.core.security import normalize_email
+from app.models.ai.agent_models import AIIndexTask, AIKnowledgeChunk
 from app.models.enums import (
     AIKnowledgeSourceType,
     CandidateRankingStatus,
     JobApplicationStatus,
-    JobStatus,
     UserRole,
 )
 from app.models.job.job_application_model import JobApplication
@@ -22,11 +24,15 @@ from app.models.user.user_model import User
 from app.schemas.job_application_schema import (
     JobApplicationCreate,
     JobApplicationStatusUpdate,
+    ParsedResume,
     ResumeParseResponse,
 )
 from app.services.ai.indexing_service import enqueue_index_task
-from app.services.gemini_service import GeminiService
+from app.services.email_service import EmailService
 from app.services.resume_service import ResumeService
+from app.services.xkiro_service import XkiroService
+
+logger = logging.getLogger(__name__)
 
 
 class JobApplicationService:
@@ -34,13 +40,17 @@ class JobApplicationService:
         self,
         db: AsyncSession,
         resume_service: ResumeService,
-        gemini_service: GeminiService,
+        xkiro_service: XkiroService,
+        email_service: EmailService | None = None,
     ):
         self.db = db
         self.resume_service = resume_service
-        self.gemini_service = gemini_service
+        self.xkiro_service = xkiro_service
+        self.email_service = email_service
 
-    async def parse_resume(self, job_id: UUID, resume: UploadFile) -> ResumeParseResponse:
+    async def parse_resume(
+        self, job_id: UUID, resume: UploadFile
+    ) -> ResumeParseResponse:
         job = await self._get_public_job(job_id)
         return await self._parse_resume(job, resume)
 
@@ -59,7 +69,8 @@ class JobApplicationService:
         resume: UploadFile,
     ) -> ResumeParseResponse:
         resume_text = await self.resume_service.extract_text(resume)
-        parsed_resume = await self.gemini_service.extract_resume_details(resume_text)
+        parsed_resume = await self.xkiro_service.extract_resume_details(resume_text)
+        parsed_resume = self.resume_service.normalize_parsed_resume(parsed_resume)
 
         return ResumeParseResponse(
             job_id=job.id,
@@ -82,13 +93,20 @@ class JobApplicationService:
 
     async def _create_application(self, job: Job, data: JobApplicationCreate):
         candidate_email = normalize_email(str(data.candidate_email))
+        parsed_resume = (
+            self.resume_service.normalize_parsed_resume(data.parsed_resume)
+            if data.parsed_resume
+            else None
+        )
 
         existing_application = await self._get_application_by_job_email(
             job.id,
             candidate_email,
         )
         if existing_application:
-            raise HTTPException(status_code=400, detail="Candidate has already applied for this job")
+            raise HTTPException(
+                status_code=400, detail="Candidate has already applied for this job"
+            )
 
         application = JobApplication(
             job_id=job.id,
@@ -101,7 +119,9 @@ class JobApplicationService:
             portfolio_url=data.portfolio_url,
             summary=data.summary,
             resume_text=data.resume_text,
-            parsed_resume=data.parsed_resume.model_dump(mode="json") if data.parsed_resume else None,
+            parsed_resume=(
+                parsed_resume.model_dump(mode="json") if parsed_resume else None
+            ),
             cover_letter=data.cover_letter,
             status=JobApplicationStatus.SUBMITTED,
         )
@@ -119,17 +139,25 @@ class JobApplicationService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise HTTPException(status_code=400, detail="Candidate has already applied for this job") from exc
+            raise HTTPException(
+                status_code=400, detail="Candidate has already applied for this job"
+            ) from exc
 
         await self.db.refresh(application)
         return application
 
-    async def get_applications_for_job(self, job_id: UUID, current_user: User, sort: str = "rank"):
-        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
+    async def get_applications_for_job(
+        self, job_id: UUID, current_user: User, sort: str = "rank"
+    ):
+        organization_id = self._require_org_admin_or_hr_manager_organization(
+            current_user
+        )
         await self._get_organization_job(job_id, organization_id)
 
         if sort not in ("rank", "created_at"):
-            raise HTTPException(status_code=400, detail="sort must be either 'rank' or 'created_at'")
+            raise HTTPException(
+                status_code=400, detail="sort must be either 'rank' or 'created_at'"
+            )
 
         query = select(JobApplication).where(
             JobApplication.job_id == job_id,
@@ -138,7 +166,11 @@ class JobApplicationService:
         if sort == "rank":
             query = query.order_by(
                 case(
-                    (JobApplication.ranking_status == CandidateRankingStatus.COMPLETED, 0),
+                    (
+                        JobApplication.ranking_status
+                        == CandidateRankingStatus.COMPLETED,
+                        0,
+                    ),
                     else_=1,
                 ),
                 JobApplication.ranking_score.desc().nullslast(),
@@ -147,31 +179,51 @@ class JobApplicationService:
         else:
             query = query.order_by(JobApplication.created_at.desc())
 
-        result = await self.db.execute(
-            query
-        )
+        result = await self.db.execute(query)
         return result.scalars().all()
 
     async def rerank_applications_for_job(self, job_id: UUID):
         result = await self.db.execute(select(Job).where(Job.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
-            return
+            return []
 
+        return await self._rerank_applications(job)
+
+    async def rerank_applications_for_job_as_manager(
+        self,
+        job_id: UUID,
+        current_user: User,
+    ):
+        organization_id = self._require_org_admin_or_hr_manager_organization(
+            current_user
+        )
+        job = await self._get_organization_job(job_id, organization_id)
+        return await self._rerank_applications(job)
+
+    async def _rerank_applications(self, job: Job):
         result = await self.db.execute(
             select(JobApplication)
-            .where(JobApplication.job_id == job_id)
+            .where(JobApplication.job_id == job.id)
             .order_by(JobApplication.created_at.asc())
         )
         applications = result.scalars().all()
         for application in applications:
             await self._rank_application(job, application)
             await self.db.commit()
+            await self.db.refresh(application)
+        return applications
 
     async def get_application(self, application_id: UUID, current_user: User):
-        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
+        organization_id = self._require_org_admin_or_hr_manager_organization(
+            current_user
+        )
         result = await self.db.execute(
-            select(JobApplication).where(
+            select(JobApplication)
+            .options(
+                selectinload(JobApplication.job).selectinload(Job.organization),
+            )
+            .where(
                 JobApplication.id == application_id,
                 JobApplication.organization_id == organization_id,
             )
@@ -188,18 +240,84 @@ class JobApplicationService:
         current_user: User,
     ):
         application = await self.get_application(application_id, current_user)
+        previous_status = application.status
+        should_notify = (
+            self.email_service is not None
+            and previous_status != data.status
+            and data.status
+            in (JobApplicationStatus.SHORTLISTED, JobApplicationStatus.REJECTED)
+        )
+        notification_context = (
+            (
+                application.candidate_email,
+                application.candidate_name,
+                application.job.title,
+                application.job.organization.name,
+            )
+            if should_notify
+            else None
+        )
         application.status = data.status
 
         await self.db.commit()
         await self.db.refresh(application)
+
+        if self.email_service and notification_context:
+            candidate_email, candidate_name, job_title, organization_name = (
+                notification_context
+            )
+            try:
+                await self.email_service.send_job_application_status_email(
+                    email=candidate_email,
+                    candidate_name=candidate_name,
+                    job_title=job_title,
+                    organization_name=organization_name,
+                    status=data.status,
+                )
+            # The decision is already committed; an SMTP outage must not make
+            # the status update appear to have failed or invite duplicate action.
+            except Exception:
+                logger.exception("Failed to send job application status email")
         return application
+
+    async def delete_application(
+        self,
+        application_id: UUID,
+        current_user: User,
+    ) -> None:
+        application = await self.get_application(application_id, current_user)
+        await self.db.execute(
+            delete(AIKnowledgeChunk).where(
+                AIKnowledgeChunk.source_type == AIKnowledgeSourceType.APPLICATION,
+                AIKnowledgeChunk.source_id == application.id,
+            )
+        )
+        await self.db.execute(
+            delete(AIIndexTask).where(
+                AIIndexTask.source_type == AIKnowledgeSourceType.APPLICATION,
+                AIIndexTask.source_id == application.id,
+            )
+        )
+        await self.db.delete(application)
+        await self.db.commit()
 
     async def _rank_application(self, job: Job, application: JobApplication):
         application.ranking_status = CandidateRankingStatus.PENDING
         application.ranking_error = None
 
+        if application.parsed_resume:
+            try:
+                parsed_resume = ParsedResume.model_validate(application.parsed_resume)
+                application.parsed_resume = self.resume_service.normalize_parsed_resume(
+                    parsed_resume
+                ).model_dump(mode="json")
+            except (TypeError, ValueError):
+                # Preserve legacy/malformed parsed data so ranking can still use
+                # the original resume text instead of blocking the application.
+                pass
+
         try:
-            ranking = await self.gemini_service.rank_candidate_for_job(job, application)
+            ranking = await self.xkiro_service.rank_candidate_for_job(job, application)
         except HTTPException as exc:
             application.ranking_score = None
             application.ranking_recommendation = None
@@ -234,11 +352,11 @@ class JobApplicationService:
 
     async def _get_public_job(self, job_id: UUID) -> Job:
         result = await self.db.execute(
-            select(Job).where(Job.id == job_id, Job.is_active.is_(True), Job.status == JobStatus.OPEN)
+            select(Job).where(Job.id == job_id, Job.is_active.is_(True))
         )
         job = result.scalar_one_or_none()
         if not job:
-            raise HTTPException(status_code=404, detail="Open job not found")
+            raise HTTPException(status_code=404, detail="Active job not found")
         return job
 
     async def _get_public_job_by_slug(
@@ -253,12 +371,11 @@ class JobApplicationService:
                 Organization.slug == organization_slug,
                 Job.slug == job_slug,
                 Job.is_active.is_(True),
-                Job.status == JobStatus.OPEN,
             )
         )
         job = result.scalar_one_or_none()
         if not job:
-            raise HTTPException(status_code=404, detail="Open job not found")
+            raise HTTPException(status_code=404, detail="Active job not found")
         return job
 
     async def _get_organization_job(self, job_id: UUID, organization_id: UUID) -> Job:
@@ -280,12 +397,15 @@ class JobApplicationService:
         return result.scalar_one_or_none()
 
     def _require_org_admin_or_hr_manager_organization(self, current_user: User) -> UUID:
-        if current_user.role not in (UserRole.ORG_ADMIN, UserRole.HR_MANAGER) or not current_user.organization_id:
+        if (
+            current_user.role not in (UserRole.ORG_ADMIN, UserRole.HR_MANAGER)
+            or not current_user.organization_id
+        ):
             raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id
 
 
 async def rerank_job_applications_for_job(job_id: UUID):
     async with AsyncSessionLocal() as db:
-        service = JobApplicationService(db, ResumeService(), GeminiService())
+        service = JobApplicationService(db, ResumeService(), XkiroService())
         await service.rerank_applications_for_job(job_id)

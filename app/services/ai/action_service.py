@@ -17,7 +17,6 @@ from app.models.employee.employee_model import Employee
 from app.models.enums import (
     AIActionProposalStatus,
     AIConversationMode,
-    JobStatus,
     UserRole,
 )
 from app.models.job.job_application_model import JobApplication
@@ -170,7 +169,9 @@ class AIActionService:
             await self.db.rollback()
             persisted = await self._locked_proposal(proposal_id)
             if persisted.status == AIActionProposalStatus.EXECUTED:
-                persisted.error = "The action committed but a follow-up side effect failed"
+                persisted.error = (
+                    "The action committed but a follow-up side effect failed"
+                )
                 warning_result = {
                     "executed": True,
                     "warning": persisted.error,
@@ -251,9 +252,7 @@ class AIActionService:
     ) -> Any:
         arguments = proposal.arguments
         if proposal.operation == "create_job_draft":
-            data = JobCreate.model_validate(
-                {**arguments, "status": JobStatus.DRAFT}
-            )
+            data = JobCreate.model_validate({**arguments, "is_active": False})
             return await self.job_service.create_job(data, current_user)
 
         if proposal.operation == "update_job":
@@ -264,8 +263,9 @@ class AIActionService:
             )
 
         if proposal.operation == "deactivate_job":
-            return await self.job_service.delete_job(
+            return await self.job_service.update_job(
                 UUID(arguments["job_id"]),
+                JobUpdate(is_active=False),
                 current_user,
             )
 
@@ -323,11 +323,12 @@ class AIActionService:
         target = await self.db.get(model, proposal.resource_id)
         if (
             not target
-            or getattr(target, "organization_id", target.id)
-            != proposal.organization_id
+            or getattr(target, "organization_id", target.id) != proposal.organization_id
         ):
             await self._expire(proposal, "Target no longer exists")
-            raise HTTPException(status_code=409, detail="Action target no longer exists")
+            raise HTTPException(
+                status_code=409, detail="Action target no longer exists"
+            )
         if target.updated_at != proposal.expected_updated_at:
             await self._expire(proposal, "Target changed after proposal")
             raise HTTPException(
@@ -409,7 +410,6 @@ class AIActionService:
             return {
                 "id": str(resource.id),
                 "title": resource.title,
-                "status": getattr(resource.status, "value", resource.status),
                 "is_active": resource.is_active,
             }
         if isinstance(resource, JobApplication):

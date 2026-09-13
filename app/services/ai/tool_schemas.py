@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models.enums import (
     JobApplicationStatus,
     JobEmploymentType,
-    JobStatus,
     JobWorkplaceType,
     SalaryPeriod,
     UserRole,
@@ -25,7 +24,7 @@ class EmptyParams(ToolParams):
 class SearchJobsParams(ToolParams):
     title: str | None = None
     department: str | None = None
-    status: JobStatus | None = None
+    is_active: bool | None = None
     created_from: date | None = None
     created_to: date | None = None
     limit: int = Field(default=20, ge=1, le=50)
@@ -97,7 +96,7 @@ class UpdateJobParams(ToolParams):
     location: str | None = None
     employment_type: JobEmploymentType | None = None
     workplace_type: JobWorkplaceType | None = None
-    status: JobStatus | None = None
+    is_active: bool | None = None
     salary_min: int | None = Field(default=None, ge=0)
     salary_max: int | None = Field(default=None, ge=0)
     salary_currency: str | None = None

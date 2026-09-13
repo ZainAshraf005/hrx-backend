@@ -48,12 +48,6 @@ class JobWorkplaceType(str, Enum):
     HYBRID = "hybrid"
 
 
-class JobStatus(str, Enum):
-    DRAFT = "draft"
-    OPEN = "open"
-    CLOSED = "closed"
-
-
 class SalaryPeriod(str, Enum):
     HOURLY = "hourly"
     MONTHLY = "monthly"

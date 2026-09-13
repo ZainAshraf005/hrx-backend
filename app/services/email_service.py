@@ -4,6 +4,8 @@ from html import escape
 
 import aiosmtplib
 
+from app.models.enums import JobApplicationStatus
+
 
 class EmailService:
     def __init__(self):
@@ -138,3 +140,54 @@ class EmailService:
             subject=f"Leave request {status}",
             html=html,
         )
+
+    async def send_job_application_status_email(
+        self,
+        *,
+        email: str,
+        candidate_name: str,
+        job_title: str,
+        organization_name: str,
+        status: JobApplicationStatus,
+    ):
+        safe_name = escape(candidate_name)
+        safe_job_title = escape(job_title)
+        safe_organization_name = escape(organization_name)
+        subject_job_title = " ".join(job_title.splitlines())
+
+        if status == JobApplicationStatus.SHORTLISTED:
+            subject = f"An update on your {subject_job_title} application"
+            update_html = f"""
+            <p>
+                We’re pleased to let you know that your application has been
+                shortlisted. The {safe_organization_name} team may contact you
+                with the next steps.
+            </p>
+            """
+        elif status == JobApplicationStatus.REJECTED:
+            subject = f"An update on your {subject_job_title} application"
+            update_html = """
+            <p>
+                After careful consideration, we won’t be moving forward with
+                your application at this time.
+            </p>
+            <p>
+                We appreciate the time and effort you put into applying and
+                wish you every success in your job search.
+            </p>
+            """
+        else:
+            return
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <p>Hello {safe_name},</p>
+            <p>
+                Thank you for your interest in the <b>{safe_job_title}</b>
+                position at <b>{safe_organization_name}</b>.
+            </p>
+            {update_html}
+            <p>Kind regards,<br/>{safe_organization_name}</p>
+        </div>
+        """
+        await self.send_email(to=email, subject=subject, html=html)

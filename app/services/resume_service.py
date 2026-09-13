@@ -1,4 +1,6 @@
 import re
+from calendar import monthrange
+from datetime import UTC, date, datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -6,6 +8,7 @@ from fastapi import HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import RESUME_ALLOWED_EXTENSIONS, RESUME_MAX_UPLOAD_BYTES
+from app.schemas.job_application_schema import ParsedResume
 
 RESUME_READ_CHUNK_BYTES = 1024 * 1024
 CHARACTER_SPACED_PATTERN = re.compile(r"[A-Za-z0-9](?:\s+[A-Za-z0-9]){2,}")
@@ -17,6 +20,47 @@ CHARACTER_SPACED_SEPARATOR_PLACEHOLDERS = {
 
 
 class ResumeService:
+    def normalize_parsed_resume(
+        self,
+        parsed_resume: ParsedResume,
+        as_of: date | None = None,
+    ) -> ParsedResume:
+        reference_date = as_of or datetime.now(UTC).date()
+        intervals: list[tuple[date, date]] = []
+
+        for experience in parsed_resume.work_experience:
+            start = self._parse_resume_date(
+                experience.start_date,
+                reference_date,
+                is_end=False,
+            )
+            end = self._parse_resume_date(
+                experience.end_date,
+                reference_date,
+                is_end=True,
+            )
+            if start is None or end is None or start > end:
+                continue
+            intervals.append((start, min(end, reference_date)))
+
+        if not intervals:
+            return parsed_resume
+
+        intervals.sort(key=lambda item: item[0])
+        merged: list[tuple[date, date]] = []
+        for start, end in intervals:
+            if not merged or start > merged[-1][1]:
+                merged.append((start, end))
+                continue
+            previous_start, previous_end = merged[-1]
+            merged[-1] = (previous_start, max(previous_end, end))
+
+        total_days = sum((end - start).days for start, end in merged)
+        total_years = round(total_days / 365.2425, 1)
+        return parsed_resume.model_copy(
+            update={"total_experience_years": total_years}
+        )
+
     async def extract_text(self, resume: UploadFile) -> str:
         extension = self._validate_resume_file(resume)
         file_bytes = await self._read_limited(resume)
@@ -103,3 +147,49 @@ class ResumeService:
         for placeholder, separator in CHARACTER_SPACED_SEPARATOR_PLACEHOLDERS.items():
             normalized = normalized.replace(placeholder, separator)
         return normalized
+
+    def _parse_resume_date(
+        self,
+        value: str | None,
+        as_of: date,
+        *,
+        is_end: bool,
+    ) -> date | None:
+        if not value or not value.strip():
+            return None
+
+        normalized = value.strip().lower().replace(",", " ")
+        normalized = re.sub(r"\s+", " ", normalized)
+        if normalized in {"present", "current", "ongoing", "now"}:
+            return as_of
+
+        for date_format in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+            try:
+                return (
+                    datetime.strptime(normalized, date_format)
+                    .replace(tzinfo=UTC)
+                    .date()
+                )
+            except ValueError:
+                continue
+
+        for date_format in ("%b %Y", "%B %Y", "%m/%Y", "%Y-%m"):
+            try:
+                parsed = (
+                    datetime.strptime(normalized, date_format)
+                    .replace(tzinfo=UTC)
+                    .date()
+                )
+                if is_end:
+                    return parsed.replace(
+                        day=monthrange(parsed.year, parsed.month)[1]
+                    )
+                return parsed.replace(day=1)
+            except ValueError:
+                continue
+
+        if re.fullmatch(r"\d{4}", normalized):
+            year = int(normalized)
+            return date(year, 12, 31) if is_end else date(year, 1, 1)
+
+        return None

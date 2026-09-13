@@ -28,10 +28,12 @@ AUTH_COOKIE_SAMESITE = cast(
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-GEMINI_AGENT_MODEL = os.getenv("GEMINI_AGENT_MODEL", "gemini-3.6-flash")
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
 GEMINI_EMBEDDING_DIMENSIONS = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
+
+XKIRO_API_KEY = os.getenv("XKIRO_API_KEY")
+XKIRO_BASE_URL = os.getenv("XKIRO_BASE_URL", "https://api.xkiro.com/v1")
+XKIRO_MODEL = os.getenv("XKIRO_MODEL", "mistralai/mistral-large-2512")
 
 AI_AGENT_MAX_TOOL_ROUNDS = int(os.getenv("AI_AGENT_MAX_TOOL_ROUNDS", "8"))
 AI_AGENT_MAX_RESULT_ROWS = int(os.getenv("AI_AGENT_MAX_RESULT_ROWS", "50"))
