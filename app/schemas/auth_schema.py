@@ -59,6 +59,7 @@ class ProfileUpdateRequest(BaseModel):
 class AuthOrganizationResponse(BaseModel):
     id: UUID
     name: str
+    slug: str
     email: EmailStr | None = None
     website: str | None = None
     description: str | None = None

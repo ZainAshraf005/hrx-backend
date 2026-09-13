@@ -13,6 +13,7 @@ class Organization(BaseModel):
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
     website: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str | None] = mapped_column(String, nullable=True)

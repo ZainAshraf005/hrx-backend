@@ -17,6 +17,7 @@ from app.models.enums import (
 )
 from app.models.job.job_application_model import JobApplication
 from app.models.job.job_model import Job
+from app.models.organization.organization import Organization
 from app.models.user.user_model import User
 from app.schemas.job_application_schema import (
     JobApplicationCreate,
@@ -40,21 +41,52 @@ class JobApplicationService:
         self.gemini_service = gemini_service
 
     async def parse_resume(self, job_id: UUID, resume: UploadFile) -> ResumeParseResponse:
-        await self._get_public_job(job_id)
+        job = await self._get_public_job(job_id)
+        return await self._parse_resume(job, resume)
+
+    async def parse_resume_by_slug(
+        self,
+        organization_slug: str,
+        job_slug: str,
+        resume: UploadFile,
+    ) -> ResumeParseResponse:
+        job = await self._get_public_job_by_slug(organization_slug, job_slug)
+        return await self._parse_resume(job, resume)
+
+    async def _parse_resume(
+        self,
+        job: Job,
+        resume: UploadFile,
+    ) -> ResumeParseResponse:
         resume_text = await self.resume_service.extract_text(resume)
         parsed_resume = await self.gemini_service.extract_resume_details(resume_text)
 
         return ResumeParseResponse(
-            job_id=job_id,
+            job_id=job.id,
             resume_text=resume_text,
             parsed_resume=parsed_resume,
         )
 
     async def create_application(self, job_id: UUID, data: JobApplicationCreate):
         job = await self._get_public_job(job_id)
+        return await self._create_application(job, data)
+
+    async def create_application_by_slug(
+        self,
+        organization_slug: str,
+        job_slug: str,
+        data: JobApplicationCreate,
+    ):
+        job = await self._get_public_job_by_slug(organization_slug, job_slug)
+        return await self._create_application(job, data)
+
+    async def _create_application(self, job: Job, data: JobApplicationCreate):
         candidate_email = normalize_email(str(data.candidate_email))
 
-        existing_application = await self._get_application_by_job_email(job_id, candidate_email)
+        existing_application = await self._get_application_by_job_email(
+            job.id,
+            candidate_email,
+        )
         if existing_application:
             raise HTTPException(status_code=400, detail="Candidate has already applied for this job")
 
@@ -203,6 +235,26 @@ class JobApplicationService:
     async def _get_public_job(self, job_id: UUID) -> Job:
         result = await self.db.execute(
             select(Job).where(Job.id == job_id, Job.is_active.is_(True), Job.status == JobStatus.OPEN)
+        )
+        job = result.scalar_one_or_none()
+        if not job:
+            raise HTTPException(status_code=404, detail="Open job not found")
+        return job
+
+    async def _get_public_job_by_slug(
+        self,
+        organization_slug: str,
+        job_slug: str,
+    ) -> Job:
+        result = await self.db.execute(
+            select(Job)
+            .join(Organization)
+            .where(
+                Organization.slug == organization_slug,
+                Job.slug == job_slug,
+                Job.is_active.is_(True),
+                Job.status == JobStatus.OPEN,
+            )
         )
         job = result.scalar_one_or_none()
         if not job:

@@ -62,6 +62,11 @@ class ResumeParseResponse(BaseModel):
     parsed_resume: ParsedResume
 
 
+class PublicResumeParseResponse(BaseModel):
+    resume_text: str
+    parsed_resume: ParsedResume
+
+
 class CandidateRankingResult(BaseModel):
     score: int = Field(ge=0, le=100)
     recommendation: CandidateRankingRecommendation
@@ -93,6 +98,13 @@ class JobApplicationResponse(BaseModel):
     id: UUID
     job_id: UUID
     organization_id: UUID
+    candidate_name: str
+    candidate_email: EmailStr
+    candidate_phone: str | None = None
+    candidate_location: str | None = None
+    linkedin_url: str | None = None
+    portfolio_url: str | None = None
+    summary: str | None = None
     parsed_resume: ParsedResume | None = None
     cover_letter: str | None = None
     status: JobApplicationStatus
@@ -106,3 +118,12 @@ class JobApplicationResponse(BaseModel):
     ranked_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class PublicJobApplicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    candidate_name: str
+    candidate_email: EmailStr
+    status: JobApplicationStatus
+    created_at: datetime

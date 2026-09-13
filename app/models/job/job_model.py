@@ -2,7 +2,15 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID as PyUUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,6 +31,9 @@ if TYPE_CHECKING:
 
 class Job(BaseModel):
     __tablename__ = "jobs"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "slug", name="uq_jobs_organization_slug"),
+    )
 
     organization_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
@@ -32,6 +43,7 @@ class Job(BaseModel):
     )
 
     title: Mapped[str] = mapped_column(String, nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     department: Mapped[str | None] = mapped_column(String, nullable=True)
     location: Mapped[str | None] = mapped_column(String, nullable=True)

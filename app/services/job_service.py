@@ -4,7 +4,9 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.core.slug import allocate_unique_slug
 from app.models.enums import AIKnowledgeSourceType, JobStatus, UserRole
 from app.models.job.job_model import Job
 from app.models.user.user_model import User
@@ -23,6 +25,12 @@ class JobService:
         job = Job(
             organization_id=organization_id,
             title=data.title,
+            slug=await allocate_unique_slug(
+                self.db,
+                Job,
+                data.title,
+                Job.organization_id == organization_id,
+            ),
             description=data.description,
             department=data.department,
             location=data.location,
@@ -79,6 +87,32 @@ class JobService:
         job = result.scalar_one_or_none()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+        return job
+
+    async def get_public_jobs(self, organization_slug: str | None = None):
+        query = self._public_jobs_query().options(selectinload(Job.organization))
+        if organization_slug is not None:
+            query = query.where(Job.organization.has(slug=organization_slug))
+
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
+    async def get_public_job_by_slug(
+        self,
+        organization_slug: str,
+        job_slug: str,
+    ):
+        result = await self.db.execute(
+            self._public_jobs_query()
+            .options(selectinload(Job.organization))
+            .where(
+                Job.slug == job_slug,
+                Job.organization.has(slug=organization_slug),
+            )
+        )
+        job = result.scalar_one_or_none()
+        if not job:
+            raise HTTPException(status_code=404, detail="Open job not found")
         return job
 
     async def get_organization_job(self, job_id: UUID, current_user: User):

@@ -319,6 +319,7 @@ class AuthService:
         return {
             "id": organization.id,
             "name": organization.name,
+            "slug": organization.slug,
             "email": organization.email,
             "website": organization.website,
             "description": organization.description,

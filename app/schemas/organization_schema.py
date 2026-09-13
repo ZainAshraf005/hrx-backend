@@ -35,6 +35,7 @@ class OrganizationResponse(BaseModel):
 
     id: UUID
     name: str
+    slug: str
     email: EmailStr
     description: str | None = None
     website: str | None = None

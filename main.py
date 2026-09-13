@@ -12,6 +12,7 @@ from app.api.job_controller import router as job_router
 from app.api.leave_controller import router as leave_router
 from app.api.organization_controller import router as organization_router
 from app.api.profile_controller import router as profile_router
+from app.api.public_job_controller import router as public_job_router
 
 
 # -------------------------
@@ -65,6 +66,7 @@ app.include_router(email_test_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(employee_router, prefix="/api")
 app.include_router(job_router, prefix="/api")
+app.include_router(public_job_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")

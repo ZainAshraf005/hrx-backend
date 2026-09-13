@@ -67,6 +67,7 @@ class JobResponse(BaseModel):
     id: UUID
     organization_id: UUID
     title: str
+    slug: str
     description: str
     department: str | None = None
     location: str | None = None
@@ -86,3 +87,35 @@ class JobResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class PublicJobOrganizationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    slug: str
+    website: str | None = None
+
+
+class PublicJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    slug: str
+    title: str
+    description: str
+    department: str | None = None
+    location: str | None = None
+    employment_type: EmploymentType
+    workplace_type: WorkplaceType
+    salary_min: int | None = None
+    salary_max: int | None = None
+    salary_currency: str | None = None
+    salary_period: SalaryPeriod | None = None
+    experience_level: str | None = None
+    requirements: str | None = None
+    responsibilities: str | None = None
+    benefits: str | None = None
+    published_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    organization: PublicJobOrganizationResponse

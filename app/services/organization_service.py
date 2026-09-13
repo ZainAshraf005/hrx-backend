@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import FRONTEND_URL
 from app.core.security import create_signed_token, normalize_email
+from app.core.slug import allocate_unique_slug
 from app.models import Organization
 from app.models.enums import UserRole
 from app.models.organization.organization_application import (
@@ -32,6 +33,7 @@ class OrganizationService:
         # Logic to create an organization in the database
         organization = Organization(
             name=data.name,
+            slug=await allocate_unique_slug(self.db, Organization, data.name),
             description=data.description,
             email=normalize_email(str(data.email)),
             website=data.website
@@ -178,6 +180,11 @@ class OrganizationService:
             organization = Organization(
                 email=normalize_email(application.email),
                 name=application.org_name,
+                slug=await allocate_unique_slug(
+                    self.db,
+                    Organization,
+                    application.org_name,
+                ),
                 description=application.description,
                 website=application.website
             )
