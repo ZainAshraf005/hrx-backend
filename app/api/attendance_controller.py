@@ -63,7 +63,7 @@ async def complete_checkout(
 @router.get("", response_model=list[AttendanceRosterItem])
 async def get_daily_attendance(
     date: date | None = None,
-    current_user: User = Depends(require_roles("hr_manager")),
+    current_user: User = Depends(require_roles("hr_manager", "org_admin")),
     service: AttendanceService = Depends(get_attendance_service),
 ):
     return await service.get_daily_roster(current_user, date)
