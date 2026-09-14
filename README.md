@@ -2,6 +2,21 @@
 
 FastAPI backend for HRX recruiting and organization workflows.
 
+## Transactional email
+
+Application emails are sent through Brevo's transactional API. Configure a
+sender that has been registered and verified in your Brevo account:
+
+```dotenv
+BREVO_API_KEY=your-brevo-api-key
+BREVO_SENDER_EMAIL=notifications@example.com
+BREVO_SENDER_NAME=HRX
+```
+
+`BREVO_SENDER_NAME` defaults to `HRX`. During migration, `GMAIL_EMAIL` is used
+as a fallback when `BREVO_SENDER_EMAIL` is not set; `GMAIL_APP_PASSWORD` is no
+longer used.
+
 ## Python runtime
 
 Development and production are pinned to Python 3.13.14 through

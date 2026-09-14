@@ -119,7 +119,7 @@ async def test_email_outage_does_not_undo_committed_candidate_status():
     database = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
     email_service = SimpleNamespace(
         send_job_application_status_email=AsyncMock(
-            side_effect=RuntimeError("SMTP unavailable")
+            side_effect=RuntimeError("Email provider unavailable")
         )
     )
     application = SimpleNamespace(

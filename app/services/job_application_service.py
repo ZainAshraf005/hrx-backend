@@ -274,7 +274,7 @@ class JobApplicationService:
                     organization_name=organization_name,
                     status=data.status,
                 )
-            # The decision is already committed; an SMTP outage must not make
+            # The decision is already committed; an email-provider outage must not make
             # the status update appear to have failed or invite duplicate action.
             except Exception:
                 logger.exception("Failed to send job application status email")
