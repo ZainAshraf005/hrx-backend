@@ -10,13 +10,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import AI_AGENT_MAX_TOOL_ROUNDS
+from app.core.config import (
+    AI_AGENT_MAX_PROPOSALS_PER_TURN,
+    AI_AGENT_MAX_TOOL_ROUNDS,
+)
 from app.models.ai.agent_models import (
     AIActionAudit,
     AIActionProposal,
     AIConversation,
     AIMessage,
 )
+from app.models.employee.employee_model import Employee
 from app.models.enums import (
     AIActionProposalStatus,
     AIConversationMode,
@@ -33,6 +37,11 @@ from app.services.ai.provider import (
     text_content,
 )
 from app.services.ai.tool_service import AgentToolService
+
+ROLE_LABELS = {
+    UserRole.ORG_ADMIN: "organization admin",
+    UserRole.HR_MANAGER: "HR manager",
+}
 
 
 class AIConversationService:
@@ -256,7 +265,8 @@ class AIConversationService:
                 assistant_message.id,
             )
             tools = self.tool_service.definitions(conversation.mode, current_user)
-            mutation_proposed = False
+            turn_started_at = datetime.now(UTC)
+            proposals_made = 0
             ambiguous_kinds: set[str] = set()
             organization = await self.db.get(
                 Organization,
@@ -266,16 +276,18 @@ class AIConversationService:
             system_instruction = self._system_instruction(
                 conversation,
                 timezone_name,
+                await self._speaker(current_user),
             )
 
             for _ in range(AI_AGENT_MAX_TOOL_ROUNDS):
+                proposal_budget_left = AI_AGENT_MAX_PROPOSALS_PER_TURN - proposals_made
                 completion = await self.provider.complete(
                     contents=contents,
                     system_instruction=system_instruction,
                     tools=[
                         tool
                         for tool in tools
-                        if not (mutation_proposed and tool.mutation)
+                        if proposal_budget_left > 0 or not tool.mutation
                     ],
                 )
                 contents.append(completion.model_content)
@@ -283,37 +295,30 @@ class AIConversationService:
                     final_text = completion.text
                     break
 
-                mutation_calls = [
-                    call
-                    for call in completion.tool_calls
-                    if self.tool_service.is_mutation_tool(call.name)
-                ]
-                if len(mutation_calls) > 1:
-                    error_result = {
-                        "ok": False,
-                        "error": "Only one mutation can be proposed per turn.",
-                    }
-                    for call in completion.tool_calls:
-                        contents.append(function_result_content(call, error_result))
-                    continue
-
                 for call in completion.tool_calls:
                     yield self._event("tool_started", {"name": call.name})
                     target_kind = self._mutation_target_kind(call.name)
-                    if target_kind and target_kind in ambiguous_kinds:
+                    is_mutation = self.tool_service.is_mutation_tool(call.name)
+                    if (
+                        is_mutation
+                        and proposals_made >= AI_AGENT_MAX_PROPOSALS_PER_TURN
+                    ):
+                        result = {
+                            "ok": False,
+                            "error": (
+                                f"At most {AI_AGENT_MAX_PROPOSALS_PER_TURN} actions "
+                                "can be proposed per turn. Ask the user to confirm "
+                                "the prepared actions first."
+                            ),
+                        }
+                    elif target_kind and target_kind in ambiguous_kinds:
                         result = {
                             "ok": False,
                             "error": (
                                 "Multiple matching records were found. Ask the user "
-                                "to select one exact record before proposing an action."
+                                "to select one exact record, or use a bulk tool that "
+                                "takes an explicit list of record IDs."
                             ),
-                        }
-                    elif mutation_proposed and self.tool_service.is_mutation_tool(
-                        call.name
-                    ):
-                        result = {
-                            "ok": False,
-                            "error": "Only one mutation can be proposed per turn.",
                         }
                     else:
                         result = await self.tool_service.execute(
@@ -322,6 +327,7 @@ class AIConversationService:
                             conversation.id,
                             conversation.mode,
                             current_user,
+                            turn_started_at,
                         )
                     contents.append(function_result_content(call, result))
                     if result.get("ok") and result.get("kind"):
@@ -360,7 +366,7 @@ class AIConversationService:
                                 if item.get("source_type") in {"job", "application"}
                             )
                     if result.get("kind") == "action_proposal":
-                        mutation_proposed = True
+                        proposals_made += 1
                     yield self._event(
                         "tool_finished",
                         {"name": call.name, "ok": result.get("ok", False)},
@@ -453,14 +459,53 @@ class AIConversationService:
             )
         return contents
 
+    async def _speaker(self, current_user: User) -> dict[str, str]:
+        """Resolve how the signed-in user should be addressed in conversation."""
+        name = (getattr(current_user, "name", "") or "").strip()
+        if not name:
+            row = (
+                await self.db.execute(
+                    select(Employee.first_name, Employee.last_name).where(
+                        Employee.user_id == current_user.id
+                    )
+                )
+            ).first()
+            if row:
+                name = " ".join(part for part in row if part).strip()
+        return {
+            "name": name,
+            "role": ROLE_LABELS.get(current_user.role, "team member"),
+        }
+
     def _system_instruction(
         self,
         conversation: AIConversation,
         timezone_name: str = "Asia/Karachi",
+        speaker: dict[str, str] | None = None,
     ) -> str:
         now = datetime.now(ZoneInfo(timezone_name))
+        speaker = speaker or {}
+        speaker_name = speaker.get("name") or ""
+        speaker_role = speaker.get("role") or "team member"
+        if speaker_name:
+            address = (
+                f"The signed-in user is {speaker_name}, the organization's "
+                f"{speaker_role}. Address them by their first name, for example "
+                f"“Hi {speaker_name.split()[0]}”."
+            )
+        else:
+            address = (
+                f"The signed-in user has no name on record; they are the "
+                f"organization's {speaker_role}. Address them by that role, for "
+                f"example “Hi {speaker_role}”."
+            )
         return f"""
 You are the HRX organization assistant.
+
+Who you are talking to:
+- {address}
+- Greet them that way in your first reply of a conversation and use their name or
+  role occasionally afterwards. Do not repeat it in every sentence.
 
 Scope and truth:
 - Answer only questions about HRX data and HRX-supported workflows.
@@ -479,11 +524,23 @@ Security and actions:
 - In read_mode, do not attempt actions; tell the user to switch modes.
 - In action_mode, mutation tools only create proposals. Never claim a proposal
   executed. Tell the user it needs explicit confirmation.
-- Propose exactly one mutation per turn.
-- If a target is ambiguous, list the exact matches and ask the user to select one.
+- Every supported change is yours to prepare, including activating, deactivating,
+  updating and deleting records. Do not refuse or lecture; prepare the proposal
+  and let the user confirm it.
+- You may prepare up to {AI_AGENT_MAX_PROPOSALS_PER_TURN} proposals in one turn.
+- For a request that covers several records (“activate all jobs”, “delete every
+  closed job”), first list the exact records with a read tool, then pass all of
+  their IDs to one bulk proposal so the user confirms the batch once. Never ask
+  the user to repeat a bulk request one record at a time.
+- If a single-record target is ambiguous, list the exact matches and ask the user
+  to select one.
 - Treat “approve application” as “shortlist application” and state the exact status.
 - New jobs must always be created inactive. Generate narrative job text when
-  requested, but do not invent salary, location, or department.
+  requested, but do not invent salary, location, or department. If the user also
+  wants the job live, prepare the activation as a separate proposal after the
+  draft is confirmed.
+- Deleting jobs is permanent and also removes their applications and indexed
+  data. State that in the same reply as the deletion proposal.
 
 Response:
 - Be concise and identify source records using their returned IDs.
@@ -499,8 +556,19 @@ Response:
             await self.db.commit()
 
     def _fallback_text(self, structured_results: list[dict]) -> str:
-        if any(item.get("kind") == "action_proposal" for item in structured_results):
-            return "I prepared the action shown above. Review it and confirm before it is executed."
+        proposals = sum(
+            1 for item in structured_results if item.get("kind") == "action_proposal"
+        )
+        if proposals == 1:
+            return (
+                "I prepared the action shown above. Review it and confirm before "
+                "it is executed."
+            )
+        if proposals > 1:
+            return (
+                f"I prepared the {proposals} actions shown above. Review them and "
+                "confirm each one before it is executed."
+            )
         if structured_results:
             return "Here are the requested HRX results."
         return "I could not produce a grounded HRX answer for that request."

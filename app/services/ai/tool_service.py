@@ -8,7 +8,10 @@ from pydantic import ValidationError
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import AI_ACTION_PROPOSAL_TTL_SECONDS
+from app.core.config import (
+    AI_ACTION_PROPOSAL_TTL_SECONDS,
+    AI_AGENT_MAX_PROPOSALS_PER_TURN,
+)
 from app.models.ai.agent_models import (
     AIActionProposal,
     AIConversation,
@@ -43,8 +46,10 @@ from app.services.ai.tool_schemas import (
     EmptyParams,
     InviteEmployeeParams,
     JobIdParams,
+    JobIdsParams,
     SearchJobsParams,
     SemanticSearchParams,
+    SetJobsActiveParams,
     ToolParams,
     TopApplicantsParams,
     UpdateEmployeeParams,
@@ -100,6 +105,7 @@ class AgentToolService:
         conversation_id: UUID,
         mode: AIConversationMode,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         self.require_agent_user(current_user)
         entry = self._definitions.get(name)
@@ -135,11 +141,18 @@ class AgentToolService:
 
         try:
             params = self._validate_params(name, arguments)
-            result = await getattr(self, f"_tool_{name}")(
-                params,
-                conversation_id,
-                current_user,
-            )
+            tool = getattr(self, f"_tool_{name}")
+            # Only mutation tools open proposals, so only they need to know
+            # which proposals belong to the current turn.
+            if definition.mutation:
+                result = await tool(
+                    params,
+                    conversation_id,
+                    current_user,
+                    turn_started_at,
+                )
+            else:
+                result = await tool(params, conversation_id, current_user)
             return {"ok": True, **result}
         except ValidationError as exc:
             return {
@@ -430,6 +443,7 @@ class AgentToolService:
         params: CreateJobDraftParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         values = params.model_dump(mode="json")
         values["is_active"] = False
@@ -449,6 +463,7 @@ class AgentToolService:
                 "after": values,
             },
             resource_type="job",
+            turn_started_at=turn_started_at,
         )
 
     async def _tool_propose_update_job(
@@ -456,6 +471,7 @@ class AgentToolService:
         params: UpdateJobParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         job = await self.job_service.get_organization_job(params.job_id, current_user)
         changes = params.model_dump(mode="json", exclude_unset=True)
@@ -482,6 +498,7 @@ class AgentToolService:
             resource_type="job",
             resource_id=job.id,
             expected_updated_at=job.updated_at,
+            turn_started_at=turn_started_at,
         )
 
     async def _tool_propose_deactivate_job(
@@ -489,6 +506,7 @@ class AgentToolService:
         params: JobIdParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         job = await self.job_service.get_organization_job(params.job_id, current_user)
         before = self._job_data(job)
@@ -505,13 +523,97 @@ class AgentToolService:
             resource_type="job",
             resource_id=job.id,
             expected_updated_at=job.updated_at,
+            turn_started_at=turn_started_at,
         )
+
+    async def _tool_propose_set_jobs_active(
+        self,
+        params: SetJobsActiveParams,
+        conversation_id: UUID,
+        current_user: User,
+        turn_started_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        jobs = await self._load_bulk_jobs(params.job_ids, current_user)
+        before = [self._job_summary(job) for job in jobs]
+        verb = "Activate" if params.is_active else "Deactivate"
+        return await self._create_proposal(
+            conversation_id,
+            current_user,
+            operation="set_jobs_active",
+            arguments={
+                "job_ids": [str(job.id) for job in jobs],
+                "is_active": params.is_active,
+                "expected_updated_at": {
+                    str(job.id): job.updated_at.isoformat() for job in jobs
+                },
+            },
+            preview={
+                "summary": f"{verb} {self._job_count_label(jobs)}",
+                "before": before,
+                "after": [{**item, "is_active": params.is_active} for item in before],
+            },
+            resource_type="job",
+            turn_started_at=turn_started_at,
+        )
+
+    async def _tool_propose_delete_jobs(
+        self,
+        params: JobIdsParams,
+        conversation_id: UUID,
+        current_user: User,
+        turn_started_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        jobs = await self._load_bulk_jobs(params.job_ids, current_user)
+        return await self._create_proposal(
+            conversation_id,
+            current_user,
+            operation="delete_jobs",
+            arguments={
+                "job_ids": [str(job.id) for job in jobs],
+                "expected_updated_at": {
+                    str(job.id): job.updated_at.isoformat() for job in jobs
+                },
+            },
+            preview={
+                "summary": (
+                    f"Permanently delete {self._job_count_label(jobs)}. "
+                    "Their applications and indexed data are removed too."
+                ),
+                "destructive": True,
+                "before": [self._job_summary(job) for job in jobs],
+                "after": None,
+            },
+            resource_type="job",
+            turn_started_at=turn_started_at,
+        )
+
+    async def _load_bulk_jobs(
+        self,
+        job_ids: list[UUID],
+        current_user: User,
+    ) -> list[Job]:
+        unique_ids: list[UUID] = []
+        for job_id in job_ids:
+            if job_id not in unique_ids:
+                unique_ids.append(job_id)
+        return [
+            await self.job_service.get_organization_job(job_id, current_user)
+            for job_id in unique_ids
+        ]
+
+    def _job_count_label(self, jobs: list[Job]) -> str:
+        titles = ", ".join(f"“{job.title}”" for job in jobs[:5])
+        if len(jobs) > 5:
+            titles += f", and {len(jobs) - 5} more"
+        noun = "job" if len(jobs) == 1 else "jobs"
+        return f"{len(jobs)} {noun}: {titles}"
 
     async def _tool_propose_change_application_status(
         self,
         params: ChangeApplicationStatusParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         application = await self.application_service.get_application(
             params.application_id,
@@ -536,6 +638,7 @@ class AgentToolService:
             resource_type="application",
             resource_id=application.id,
             expected_updated_at=application.updated_at,
+            turn_started_at=turn_started_at,
         )
 
     async def _tool_propose_invite_employee(
@@ -543,6 +646,7 @@ class AgentToolService:
         params: InviteEmployeeParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         values = params.model_dump(mode="json")
         EmployeeCreate.model_validate(values)
@@ -557,6 +661,7 @@ class AgentToolService:
                 "after": values,
             },
             resource_type="employee",
+            turn_started_at=turn_started_at,
         )
 
     async def _tool_propose_update_employee(
@@ -564,6 +669,7 @@ class AgentToolService:
         params: UpdateEmployeeParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         employee = await self.employee_service.get_employee(
             params.employee_id, current_user
@@ -589,6 +695,7 @@ class AgentToolService:
             resource_type="employee",
             resource_id=employee.id,
             expected_updated_at=employee.updated_at,
+            turn_started_at=turn_started_at,
         )
 
     async def _tool_propose_deactivate_employee(
@@ -596,6 +703,7 @@ class AgentToolService:
         params: EmployeeIdParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         employee = await self.employee_service.get_employee(
             params.employee_id, current_user
@@ -614,6 +722,7 @@ class AgentToolService:
             resource_type="employee",
             resource_id=employee.id,
             expected_updated_at=employee.updated_at,
+            turn_started_at=turn_started_at,
         )
 
     async def _tool_propose_update_organization(
@@ -621,6 +730,7 @@ class AgentToolService:
         params: UpdateOrganizationParams,
         conversation_id: UUID,
         current_user: User,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         organization = await self.organization_service.get_own_organization(
             current_user
@@ -645,6 +755,7 @@ class AgentToolService:
             resource_type="organization",
             resource_id=organization.id,
             expected_updated_at=organization.updated_at,
+            turn_started_at=turn_started_at,
         )
 
     async def _create_proposal(
@@ -657,6 +768,7 @@ class AgentToolService:
         resource_type: str,
         resource_id: UUID | None = None,
         expected_updated_at: datetime | None = None,
+        turn_started_at: datetime | None = None,
     ) -> dict[str, Any]:
         result = await self.db.execute(
             select(AIActionProposal).where(
@@ -664,8 +776,23 @@ class AgentToolService:
                 AIActionProposal.status == AIActionProposalStatus.PENDING,
             )
         )
+        same_turn = 0
         for pending in result.scalars().all():
+            # Proposals opened earlier in this same turn belong to the batch the
+            # user is about to review, so only older ones are superseded.
+            if turn_started_at and self._as_utc(pending.created_at) >= turn_started_at:
+                same_turn += 1
+                continue
             pending.status = AIActionProposalStatus.CANCELLED
+        if same_turn >= AI_AGENT_MAX_PROPOSALS_PER_TURN:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"At most {AI_AGENT_MAX_PROPOSALS_PER_TURN} actions can be "
+                    "proposed in one turn. Ask the user to confirm these first, "
+                    "or use a bulk tool that covers several records at once."
+                ),
+            )
 
         proposal = AIActionProposal(
             conversation_id=conversation_id,
@@ -719,6 +846,8 @@ class AgentToolService:
             "propose_create_job_draft": "Prepare, but do not execute, creation of one inactive job draft.",
             "propose_update_job": "Prepare, but do not execute, one exact job update.",
             "propose_deactivate_job": "Prepare, but do not execute, deactivation of one exact job.",
+            "propose_set_jobs_active": "Prepare, but do not execute, activating or deactivating one or many exact jobs in a single action. Use this for 'activate', 'publish', 'mark active', 'mark inactive', and for bulk requests such as 'activate all jobs'.",
+            "propose_delete_jobs": "Prepare, but do not execute, permanent deletion of one or many exact jobs, along with their applications. Use this for 'delete' or 'remove' requests, including 'delete all jobs'.",
             "propose_change_application_status": "Prepare, but do not execute, one exact application status change. Map 'approve' to shortlisted.",
             "propose_invite_employee": "Prepare, but do not execute, one employee invitation. Organization admins only.",
             "propose_update_employee": "Prepare, but do not execute, one employee update. Organization admins only.",
@@ -763,6 +892,8 @@ class AgentToolService:
             "propose_create_job_draft": CreateJobDraftParams,
             "propose_update_job": UpdateJobParams,
             "propose_deactivate_job": JobIdParams,
+            "propose_set_jobs_active": SetJobsActiveParams,
+            "propose_delete_jobs": JobIdsParams,
             "propose_change_application_status": ChangeApplicationStatusParams,
             "propose_invite_employee": InviteEmployeeParams,
             "propose_update_employee": UpdateEmployeeParams,
@@ -785,6 +916,9 @@ class AgentToolService:
             return {key: resolve(item) for key, item in value.items() if key != "$defs"}
 
         return resolve(schema)
+
+    def _as_utc(self, value: datetime) -> datetime:
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
 
     async def _organization_timezone(self, organization_id: UUID | None) -> str:
         if organization_id is None:

@@ -1,3 +1,4 @@
+import pathlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
@@ -10,6 +11,10 @@ from pydantic import ValidationError
 from sqlalchemy.exc import MissingGreenlet
 
 import main
+from app.core.config import (
+    AI_AGENT_MAX_BULK_TARGETS,
+    AI_AGENT_MAX_PROPOSALS_PER_TURN,
+)
 from app.models.ai.agent_models import (
     AIActionProposal,
     AIConversation,
@@ -30,6 +35,8 @@ from app.services.ai.provider import AIProvider, XkiroAIProvider
 from app.services.ai.tool_schemas import (
     CreateJobDraftParams,
     InviteEmployeeParams,
+    JobIdsParams,
+    SetJobsActiveParams,
     UpdateEmployeeParams,
 )
 from app.services.ai.tool_service import AgentToolService
@@ -51,10 +58,10 @@ def make_tool_service():
     )
 
 
-def user(role: UserRole) -> User:
+def user(role: UserRole, name: str = "") -> User:
     return cast(
         User,
-        SimpleNamespace(id=uuid4(), organization_id=uuid4(), role=role),
+        SimpleNamespace(id=uuid4(), organization_id=uuid4(), role=role, name=name),
     )
 
 
@@ -342,3 +349,206 @@ def test_organization_timezone_uses_iana_validation():
     assert OrganizationUpdate(timezone="Asia/Karachi").timezone == "Asia/Karachi"
     with pytest.raises(ValidationError):
         OrganizationUpdate(timezone="Not/A-Timezone")
+
+
+def test_bulk_job_tools_are_available_to_hr_in_action_mode():
+    names = {
+        definition.name
+        for definition in make_tool_service().definitions(
+            AIConversationMode.ACTION_MODE,
+            user(UserRole.HR_MANAGER),
+        )
+    }
+
+    assert "propose_set_jobs_active" in names
+    assert "propose_delete_jobs" in names
+
+
+def test_bulk_job_params_accept_many_ids_and_reject_empty_lists():
+    ids = [uuid4() for _ in range(3)]
+    assert SetJobsActiveParams(job_ids=ids, is_active=True).is_active is True
+    assert JobIdsParams(job_ids=ids).job_ids == ids
+
+    with pytest.raises(ValidationError):
+        JobIdsParams(job_ids=[])
+    with pytest.raises(ValidationError):
+        JobIdsParams(job_ids=[uuid4() for _ in range(AI_AGENT_MAX_BULK_TARGETS + 1)])
+
+
+def test_bulk_job_tools_are_not_blocked_by_ambiguous_matches():
+    unused: Any = None
+    service = AIConversationService(
+        unused,
+        cast(AIProvider, DummyProvider()),
+        make_tool_service(),
+    )
+
+    assert service._mutation_target_kind("propose_set_jobs_active") is None
+    assert service._mutation_target_kind("propose_delete_jobs") is None
+    assert service._mutation_target_kind("propose_update_job") == "jobs"
+
+
+@pytest.mark.asyncio
+async def test_bulk_activation_updates_every_selected_job():
+    jobs = [
+        SimpleNamespace(id=uuid4(), title="Backend Engineer", updated_at=None),
+        SimpleNamespace(id=uuid4(), title="Designer", updated_at=None),
+    ]
+    job_service = SimpleNamespace(
+        get_organization_job=AsyncMock(side_effect=list(jobs)),
+        update_job=AsyncMock(
+            side_effect=[
+                SimpleNamespace(id=job.id, title=job.title, is_active=True)
+                for job in jobs
+            ]
+        ),
+    )
+    unused: Any = None
+    service = AIActionService(unused, cast(Any, job_service), unused, unused, unused)
+    proposal = SimpleNamespace(
+        operation="set_jobs_active",
+        arguments={
+            "job_ids": [str(job.id) for job in jobs],
+            "is_active": True,
+            "expected_updated_at": {},
+        },
+    )
+
+    result = await service._execute(
+        cast(Any, proposal),
+        user(UserRole.HR_MANAGER),
+        "https://example.test",
+    )
+
+    assert [item["is_active"] for item in result] == [True, True]
+    assert job_service.update_job.await_count == 2
+    assert all(
+        call.args[1].is_active is True
+        for call in job_service.update_job.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_removes_every_selected_job():
+    jobs = [SimpleNamespace(id=uuid4(), title=f"Job {index}") for index in range(3)]
+    job_service = SimpleNamespace(
+        get_organization_job=AsyncMock(side_effect=list(jobs)),
+        delete_job=AsyncMock(return_value=None),
+    )
+    unused: Any = None
+    service = AIActionService(unused, cast(Any, job_service), unused, unused, unused)
+    proposal = SimpleNamespace(
+        operation="delete_jobs",
+        arguments={"job_ids": [str(job.id) for job in jobs]},
+    )
+
+    result = await service._execute(
+        cast(Any, proposal),
+        user(UserRole.ORG_ADMIN),
+        "https://example.test",
+    )
+
+    assert job_service.delete_job.await_count == 3
+    assert [item["title"] for item in result] == ["Job 0", "Job 1", "Job 2"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_job_action_rejects_a_target_changed_after_proposal():
+    job = SimpleNamespace(
+        id=uuid4(),
+        title="Backend Engineer",
+        updated_at=datetime(2026, 9, 14, 10, 0, tzinfo=UTC),
+    )
+    job_service = SimpleNamespace(get_organization_job=AsyncMock(return_value=job))
+    unused: Any = None
+    service = AIActionService(unused, cast(Any, job_service), unused, unused, unused)
+    proposal = SimpleNamespace(
+        operation="delete_jobs",
+        arguments={
+            "job_ids": [str(job.id)],
+            "expected_updated_at": {
+                str(job.id): datetime(2026, 9, 14, 9, 0, tzinfo=UTC).isoformat()
+            },
+        },
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await service._execute(
+            cast(Any, proposal),
+            user(UserRole.ORG_ADMIN),
+            "https://example.test",
+        )
+
+    assert error.value.status_code == 409
+
+
+def test_system_prompt_allows_bulk_actions_and_names_the_user():
+    unused: Any = None
+    service = AIConversationService(
+        unused,
+        cast(AIProvider, DummyProvider()),
+        make_tool_service(),
+    )
+    conversation = cast(
+        AIConversation,
+        SimpleNamespace(mode=AIConversationMode.ACTION_MODE),
+    )
+
+    named = service._system_instruction(
+        conversation,
+        speaker={"name": "Zain Ashraf", "role": "HR manager"},
+    )
+    assert "Zain Ashraf" in named
+    assert "“Hi Zain”" in named
+
+    anonymous = service._system_instruction(
+        conversation,
+        speaker={"name": "", "role": "organization admin"},
+    )
+    assert "“Hi organization admin”" in anonymous
+
+    assert "Do not refuse or lecture" in named
+    assert "one bulk proposal" in named
+    assert "one record at a time" in named
+    assert "exactly one mutation per turn" not in named
+    assert str(AI_AGENT_MAX_PROPOSALS_PER_TURN) in named
+
+
+@pytest.mark.asyncio
+async def test_speaker_falls_back_to_the_employee_record_then_role():
+    class Rows:
+        def __init__(self, row: Any):
+            self.row = row
+
+        def first(self):
+            return self.row
+
+    db = SimpleNamespace(execute=AsyncMock(return_value=Rows(("Zain", "Ashraf"))))
+    service = AIConversationService(
+        cast(Any, db),
+        cast(AIProvider, DummyProvider()),
+        make_tool_service(),
+    )
+
+    assert await service._speaker(user(UserRole.HR_MANAGER, "Zain Ashraf")) == {
+        "name": "Zain Ashraf",
+        "role": "HR manager",
+    }
+    assert await service._speaker(user(UserRole.HR_MANAGER)) == {
+        "name": "Zain Ashraf",
+        "role": "HR manager",
+    }
+
+    db.execute = AsyncMock(return_value=Rows(None))
+    assert await service._speaker(user(UserRole.ORG_ADMIN)) == {
+        "name": "",
+        "role": "organization admin",
+    }
+
+
+def test_multiple_proposals_per_turn_are_allowed_up_to_the_cap():
+    source = pathlib.Path("app/services/ai/conversation_service.py").read_text()
+
+    assert AI_AGENT_MAX_PROPOSALS_PER_TURN > 1
+    assert "Only one mutation can be proposed per turn" not in source
+    assert "proposals_made >= AI_AGENT_MAX_PROPOSALS_PER_TURN" in source

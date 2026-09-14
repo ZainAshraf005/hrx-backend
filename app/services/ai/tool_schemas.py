@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.core.config import AI_AGENT_MAX_BULK_TARGETS
 from app.models.enums import (
     JobApplicationStatus,
     JobEmploymentType,
@@ -32,6 +33,14 @@ class SearchJobsParams(ToolParams):
 
 class JobIdParams(ToolParams):
     job_id: UUID
+
+
+class JobIdsParams(ToolParams):
+    job_ids: list[UUID] = Field(min_length=1, max_length=AI_AGENT_MAX_BULK_TARGETS)
+
+
+class SetJobsActiveParams(JobIdsParams):
+    is_active: bool
 
 
 class ApplicationQueryParams(ToolParams):

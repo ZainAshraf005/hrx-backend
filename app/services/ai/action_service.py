@@ -269,6 +269,33 @@ class AIActionService:
                 current_user,
             )
 
+        if proposal.operation == "set_jobs_active":
+            jobs = await self._load_bulk_jobs(proposal, current_user)
+            is_active = bool(arguments["is_active"])
+            updated = [
+                await self.job_service.update_job(
+                    job.id,
+                    JobUpdate(is_active=is_active),
+                    current_user,
+                )
+                for job in jobs
+            ]
+            return [
+                {
+                    "id": str(job.id),
+                    "title": job.title,
+                    "is_active": job.is_active,
+                }
+                for job in updated
+            ]
+
+        if proposal.operation == "delete_jobs":
+            jobs = await self._load_bulk_jobs(proposal, current_user)
+            deleted = [{"id": str(job.id), "title": job.title} for job in jobs]
+            for job in jobs:
+                await self.job_service.delete_job(job.id, current_user)
+            return deleted
+
         if proposal.operation == "change_application_status":
             return await self.application_service.update_application_status(
                 UUID(arguments["application_id"]),
@@ -305,6 +332,31 @@ class AIActionService:
             )
 
         raise HTTPException(status_code=400, detail="Unsupported action operation")
+
+    async def _load_bulk_jobs(
+        self,
+        proposal: AIActionProposal,
+        current_user: User,
+    ) -> list[Job]:
+        """Resolve every job in a bulk proposal, rejecting stale or missing ones."""
+        expected = proposal.arguments.get("expected_updated_at") or {}
+        jobs: list[Job] = []
+        for raw_id in proposal.arguments["job_ids"]:
+            job = await self.job_service.get_organization_job(
+                UUID(raw_id),
+                current_user,
+            )
+            expected_at = expected.get(raw_id)
+            if expected_at and job.updated_at != datetime.fromisoformat(expected_at):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Job “{job.title}” changed after the action was proposed; "
+                        "generate a new proposal"
+                    ),
+                )
+            jobs.append(job)
+        return jobs
 
     async def _validate_target_version(self, proposal: AIActionProposal) -> None:
         if not proposal.resource_id or not proposal.expected_updated_at:
