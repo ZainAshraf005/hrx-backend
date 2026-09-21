@@ -108,7 +108,7 @@ class AttendanceService:
         current_user: User,
     ) -> AttendanceRecord:
         organization_id = self._require_hr_organization(current_user)
-        result = await self.db.execute(
+        query = (
             select(AttendanceRecord)
             .where(
                 AttendanceRecord.id == attendance_id,
@@ -116,6 +116,14 @@ class AttendanceService:
             )
             .with_for_update()
         )
+        if current_user.role == UserRole.HR_MANAGER:
+            query = query.where(
+                AttendanceRecord.employee.has(
+                    Employee.user.has(User.role == UserRole.EMPLOYEE)
+                )
+            )
+
+        result = await self.db.execute(query)
         record = result.scalar_one_or_none()
         if not record:
             raise HTTPException(status_code=404, detail="Attendance record not found")
@@ -194,7 +202,7 @@ class AttendanceService:
                 detail="Attendance cannot be queried for a future date",
             )
 
-        employee_result = await self.db.execute(
+        employee_query = (
             select(Employee)
             .where(
                 Employee.organization_id == organization_id,
@@ -202,6 +210,12 @@ class AttendanceService:
             )
             .order_by(Employee.first_name, Employee.last_name)
         )
+        if current_user.role == UserRole.HR_MANAGER:
+            employee_query = employee_query.where(
+                Employee.user.has(User.role == UserRole.EMPLOYEE)
+            )
+
+        employee_result = await self.db.execute(employee_query)
         employees = [
             employee
             for employee in employee_result.scalars().all()

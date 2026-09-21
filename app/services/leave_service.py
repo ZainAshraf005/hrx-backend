@@ -104,6 +104,12 @@ class LeaveService:
             query = query.where(LeaveRequest.employee_id == employee_id)
         if status is not None:
             query = query.where(LeaveRequest.status == status)
+        if current_user.role == UserRole.HR_MANAGER:
+            query = query.where(
+                LeaveRequest.employee.has(
+                    Employee.user.has(User.role == UserRole.EMPLOYEE)
+                )
+            )
 
         result = await self.db.execute(query)
         return list(result.scalars().unique().all())
@@ -146,7 +152,7 @@ class LeaveService:
         current_user: User,
     ) -> LeaveRequest:
         organization_id = self._require_leave_staff(current_user)
-        result = await self.db.execute(
+        query = (
             select(LeaveRequest)
             .options(
                 selectinload(LeaveRequest.employee).selectinload(Employee.user)
@@ -157,6 +163,14 @@ class LeaveService:
             )
             .with_for_update()
         )
+        if current_user.role == UserRole.HR_MANAGER:
+            query = query.where(
+                LeaveRequest.employee.has(
+                    Employee.user.has(User.role == UserRole.EMPLOYEE)
+                )
+            )
+
+        result = await self.db.execute(query)
         request = result.scalar_one_or_none()
         if not request:
             raise HTTPException(status_code=404, detail="Leave request not found")

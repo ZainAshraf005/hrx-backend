@@ -28,8 +28,13 @@ class EmployeeService:
         self.db = db
         self.email_service = email_service
 
-    async def create_employee(self, data: EmployeeCreate, current_user: User, frontend_url: str = FRONTEND_URL):
-        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
+    async def create_employee(
+        self, data: EmployeeCreate, current_user: User, frontend_url: str = FRONTEND_URL
+    ):
+        organization_id = self._require_org_admin_or_hr_manager_organization(
+            current_user
+        )
+        self._require_hr_manages_employee_role(current_user, data.role)
         email = normalize_email(str(data.email))
 
         existing_user = await self._get_user_by_email(email)
@@ -66,12 +71,16 @@ class EmployeeService:
         await self.db.refresh(employee)
 
         setup_token = self._create_employee_setup_token(user, employee)
-        await self.email_service.send_employee_invite(email, data.first_name, setup_token, frontend_url)
+        await self.email_service.send_employee_invite(
+            email, data.first_name, setup_token, frontend_url
+        )
 
         return await self.get_employee(employee.id, current_user)
 
     async def get_employees(self, current_user: User, include_inactive: bool = False):
-        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
+        organization_id = self._require_org_admin_or_hr_manager_organization(
+            current_user
+        )
         query = (
             select(Employee)
             .options(selectinload(Employee.user))
@@ -80,24 +89,38 @@ class EmployeeService:
         )
         if not include_inactive:
             query = query.where(Employee.is_active.is_(True))
+        if current_user.role == UserRole.HR_MANAGER:
+            query = query.where(Employee.user.has(User.role == UserRole.EMPLOYEE))
 
         result = await self.db.execute(query)
         return result.scalars().all()
 
     async def get_employee(self, employee_id: UUID, current_user: User):
-        organization_id = self._require_org_admin_or_hr_manager_organization(current_user)
-        result = await self.db.execute(
+        organization_id = self._require_org_admin_or_hr_manager_organization(
+            current_user
+        )
+        query = (
             select(Employee)
             .options(selectinload(Employee.user))
-            .where(Employee.id == employee_id, Employee.organization_id == organization_id)
+            .where(
+                Employee.id == employee_id, Employee.organization_id == organization_id
+            )
         )
+        if current_user.role == UserRole.HR_MANAGER:
+            query = query.where(Employee.user.has(User.role == UserRole.EMPLOYEE))
+
+        result = await self.db.execute(query)
         employee = result.scalar_one_or_none()
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
         return employee
 
-    async def update_employee(self, employee_id: UUID, data: EmployeeUpdate, current_user: User):
+    async def update_employee(
+        self, employee_id: UUID, data: EmployeeUpdate, current_user: User
+    ):
         employee = await self.get_employee(employee_id, current_user)
+        if data.role is not None:
+            self._require_hr_manages_employee_role(current_user, data.role)
         final_role = data.role if data.role is not None else employee.user.role
         final_active = (
             data.is_active if data.is_active is not None else employee.user.is_active
@@ -227,3 +250,17 @@ class EmployeeService:
         ):
             raise HTTPException(status_code=403, detail="Not Authorized")
         return current_user.organization_id
+
+    def _require_hr_manages_employee_role(
+        self,
+        current_user: User,
+        target_role: UserRole,
+    ) -> None:
+        if (
+            current_user.role == UserRole.HR_MANAGER
+            and target_role != UserRole.EMPLOYEE
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="HR managers can only manage employees",
+            )
