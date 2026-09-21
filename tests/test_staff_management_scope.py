@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from app.models.enums import UserRole
 from app.models.user.user_model import User
 from app.services.attendance_service import AttendanceService
+from app.services.dashboard_service import DashboardService
 from app.services.leave_service import LeaveService
 
 
@@ -125,3 +126,28 @@ async def test_hr_manager_cannot_change_hr_leave_status():
 
     assert error.value.status_code == 404
     assert UserRole.EMPLOYEE in query_parameters(session)
+
+
+def test_dashboard_scopes_hr_manager_metrics_to_employees():
+    service = DashboardService(cast(Any, FakeSession()))
+
+    query = service._employee_ids_query(user(UserRole.HR_MANAGER))
+
+    assert UserRole.EMPLOYEE in list(query.compile().params.values())
+
+
+def test_dashboard_keeps_hr_visible_to_organization_admin():
+    service = DashboardService(cast(Any, FakeSession()))
+
+    query = service._employee_ids_query(user(UserRole.ORG_ADMIN))
+
+    assert UserRole.EMPLOYEE not in list(query.compile().params.values())
+
+
+def test_dashboard_rejects_employee_role():
+    service = DashboardService(cast(Any, FakeSession()))
+
+    with pytest.raises(HTTPException) as error:
+        service._employee_ids_query(user(UserRole.EMPLOYEE))
+
+    assert error.value.status_code == 403

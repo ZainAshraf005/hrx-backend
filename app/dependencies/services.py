@@ -8,6 +8,7 @@ from app.services.ai.provider import AIProvider, XkiroAIProvider
 from app.services.ai.tool_service import AgentToolService
 from app.services.attendance_service import AttendanceService
 from app.services.auth_service import AuthService
+from app.services.dashboard_service import DashboardService
 from app.services.email_service import EmailService
 from app.services.employee_service import EmployeeService
 from app.services.job_application_service import JobApplicationService
@@ -39,6 +40,10 @@ def get_employee_service(db: AsyncSession = Depends(get_db),
 
 def get_attendance_service(db: AsyncSession = Depends(get_db)):
     return AttendanceService(db)
+
+
+def get_dashboard_service(db: AsyncSession = Depends(get_db)):
+    return DashboardService(db)
 
 
 def get_leave_service(
