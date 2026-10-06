@@ -1,11 +1,15 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.enums import (
     CandidateRankingRecommendation as CandidateRankingRecommendationEnum,
+)
+from app.models.enums import (
     CandidateRankingStatus as CandidateRankingStatusEnum,
+)
+from app.models.enums import (
     JobApplicationStatus as JobApplicationStatusEnum,
 )
 
@@ -58,12 +62,39 @@ class ResumeParseResponse(BaseModel):
     parsed_resume: ParsedResume
 
 
+class PublicResumeParseResponse(BaseModel):
+    resume_text: str
+    parsed_resume: ParsedResume
+
+
 class CandidateRankingResult(BaseModel):
     score: int = Field(ge=0, le=100)
+    skills_score: int = Field(ge=0, le=40)
+    experience_score: int = Field(ge=0, le=30)
+    education_score: int = Field(ge=0, le=10)
+    role_fit_score: int = Field(ge=0, le=15)
+    evidence_quality_score: int = Field(ge=0, le=5)
     recommendation: CandidateRankingRecommendation
     rationale: str
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_score_and_recommendation(self):
+        self.score = (
+            self.skills_score
+            + self.experience_score
+            + self.education_score
+            + self.role_fit_score
+            + self.evidence_quality_score
+        )
+        if self.score >= 80:
+            self.recommendation = CandidateRankingRecommendation.STRONG_MATCH
+        elif self.score >= 50:
+            self.recommendation = CandidateRankingRecommendation.POSSIBLE_MATCH
+        else:
+            self.recommendation = CandidateRankingRecommendation.NOT_RECOMMENDED
+        return self
 
 
 class JobApplicationCreate(BaseModel):
@@ -89,6 +120,13 @@ class JobApplicationResponse(BaseModel):
     id: UUID
     job_id: UUID
     organization_id: UUID
+    candidate_name: str
+    candidate_email: EmailStr
+    candidate_phone: str | None = None
+    candidate_location: str | None = None
+    linkedin_url: str | None = None
+    portfolio_url: str | None = None
+    summary: str | None = None
     parsed_resume: ParsedResume | None = None
     cover_letter: str | None = None
     status: JobApplicationStatus
@@ -102,3 +140,12 @@ class JobApplicationResponse(BaseModel):
     ranked_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class PublicJobApplicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    candidate_name: str
+    candidate_email: EmailStr
+    status: JobApplicationStatus
+    created_at: datetime

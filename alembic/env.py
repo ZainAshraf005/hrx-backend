@@ -1,28 +1,24 @@
-from logging.config import fileConfig
-import os
 import asyncio
+from logging.config import fileConfig
 
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.models  # noqa: F401
 from alembic import context
-
-from dotenv import load_dotenv
+from app.core.config import DATABASE_URL
+from app.core.database import Base
 
 # load env
 load_dotenv()
 
 config = context.config
 
-DATABASE_URL = os.getenv("DATABASE_URL")
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-# IMPORTANT: import ALL models so metadata is populated
-from app.core.database import Base
-from app import models  # this must import everything (your __init__.py fix matters here)
 
 target_metadata = Base.metadata
 

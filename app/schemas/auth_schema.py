@@ -50,9 +50,8 @@ class ProfileOrganizationUpdateRequest(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str | None = None
     email: EmailStr | None = None
-    first_name: str | None = None
-    last_name: str | None = None
     phone: str | None = None
     organization: ProfileOrganizationUpdateRequest | None = None
 
@@ -60,6 +59,7 @@ class ProfileUpdateRequest(BaseModel):
 class AuthOrganizationResponse(BaseModel):
     id: UUID
     name: str
+    slug: str
     email: EmailStr | None = None
     website: str | None = None
     description: str | None = None
@@ -82,6 +82,10 @@ class AuthUserResponse(BaseModel):
     organization_id: UUID | None = None
     organization: AuthOrganizationResponse | None = None
     employee: AuthEmployeeResponse | None = None
+
+
+class ProfileResponse(AuthUserResponse):
+    name: str
 
 
 class AuthSessionResponse(BaseModel):

@@ -12,6 +12,28 @@ class UserRole(str, Enum):
     EMPLOYEE = "employee"
 
 
+class AttendanceDayStatus(str, Enum):
+    CHECKED_IN = "checked_in"
+    PRESENT = "present"
+    ON_LEAVE = "on_leave"
+    ABSENT = "absent"
+    NON_WORKING = "non_working"
+
+
+class LeaveType(str, Enum):
+    SICK = "sick"
+    CASUAL = "casual"
+    ANNUAL = "annual"
+    UNPAID = "unpaid"
+
+
+class LeaveStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
 class JobEmploymentType(str, Enum):
     FULL_TIME = "full_time"
     PART_TIME = "part_time"
@@ -24,12 +46,6 @@ class JobWorkplaceType(str, Enum):
     ONSITE = "onsite"
     REMOTE = "remote"
     HYBRID = "hybrid"
-
-
-class JobStatus(str, Enum):
-    DRAFT = "draft"
-    OPEN = "open"
-    CLOSED = "closed"
 
 
 class SalaryPeriod(str, Enum):
@@ -54,5 +70,43 @@ class CandidateRankingRecommendation(str, Enum):
 
 class CandidateRankingStatus(str, Enum):
     PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AIConversationMode(str, Enum):
+    READ_MODE = "read_mode"
+    ACTION_MODE = "action_mode"
+
+
+class AIMessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
+
+
+class AIMessageStatus(str, Enum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AIActionProposalStatus(str, Enum):
+    PENDING = "pending"
+    EXECUTED = "executed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    FAILED = "failed"
+
+
+class AIKnowledgeSourceType(str, Enum):
+    JOB = "job"
+    APPLICATION = "application"
+
+
+class AIIndexTaskStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"

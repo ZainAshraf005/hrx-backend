@@ -1,13 +1,19 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.organization_controller import router as organization_router
-from app.api.email_test_controller import router as email_test_router
+from app.api.ai_controller import router as ai_router
+from app.api.attendance_controller import router as attendance_router
 from app.api.auth_controller import router as auth_router
+from app.api.dashboard_controller import router as dashboard_router
+from app.api.email_test_controller import router as email_test_router
 from app.api.employee_controller import router as employee_router
 from app.api.job_controller import router as job_router
+from app.api.leave_controller import router as leave_router
+from app.api.organization_controller import router as organization_router
 from app.api.profile_controller import router as profile_router
+from app.api.public_job_controller import router as public_job_router
 
 
 # -------------------------
@@ -59,6 +65,11 @@ async def root():
 app.include_router(organization_router, prefix="/api")
 app.include_router(email_test_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 app.include_router(employee_router, prefix="/api")
 app.include_router(job_router, prefix="/api")
+app.include_router(public_job_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(ai_router, prefix="/api")
+app.include_router(attendance_router, prefix="/api")
+app.include_router(leave_router, prefix="/api")

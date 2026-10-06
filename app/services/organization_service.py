@@ -1,20 +1,24 @@
-from typing import Optional
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import FRONTEND_URL
-from app.models.enums import UserRole
+from app.core.security import create_signed_token, normalize_email
+from app.core.slug import allocate_unique_slug
 from app.models import Organization
+from app.models.enums import UserRole
+from app.models.organization.organization_application import (
+    OrganizationApplication,
+    Status,
+)
 from app.models.organization.organization_invite import OrganizationInvite
 from app.models.user.user_model import User
 from app.schemas.organization_application import OrganizationApplicationCreate
 from app.schemas.organization_schema import OrganizationCreate, OrganizationUpdate
-from app.models.organization.organization_application import OrganizationApplication, Status
 from app.services.email_service import EmailService
-from app.core.security import create_signed_token, normalize_email
 
 
 class OrganizationService:
@@ -29,6 +33,7 @@ class OrganizationService:
         # Logic to create an organization in the database
         organization = Organization(
             name=data.name,
+            slug=await allocate_unique_slug(self.db, Organization, data.name),
             description=data.description,
             email=normalize_email(str(data.email)),
             website=data.website
@@ -50,25 +55,73 @@ class OrganizationService:
         return result.scalar_one_or_none()
 
     async def update_organization(self, organization_id: UUID, data: OrganizationUpdate):
-        # Logic to update an organization's details in the database
         org = await self.get_organization(organization_id)
 
         if not org:
             return None
 
-        if data.name is not None:
+        if data.name is not None and data.name != org.name:
+            existing_name = await self.db.scalar(
+                select(Organization.id).where(
+                    Organization.name == data.name,
+                    Organization.id != organization_id,
+                )
+            )
+            if existing_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Organization name already exists",
+                )
             org.name = data.name
         if data.email is not None:
-            org.email = normalize_email(str(data.email))
-        if data.description is not None:
+            email = normalize_email(str(data.email))
+            if email != org.email:
+                existing_email = await self.db.scalar(
+                    select(Organization.id).where(
+                        Organization.email == email,
+                        Organization.id != organization_id,
+                    )
+                )
+                if existing_email:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Organization email already exists",
+                    )
+                org.email = email
+        if "description" in data.model_fields_set:
             org.description = data.description
-        if data.website is not None:
+        if "website" in data.model_fields_set:
             org.website = data.website
+        if data.timezone is not None:
+            org.timezone = data.timezone
 
         await self.db.commit()
         await self.db.refresh(org)
 
         return org
+
+    async def get_own_organization(self, current_user: User) -> Organization:
+        organization_id = self._require_org_admin_organization(current_user)
+        organization = await self.get_organization(organization_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return organization
+
+    async def update_own_organization(
+        self,
+        data: OrganizationUpdate,
+        current_user: User,
+    ) -> Organization:
+        organization_id = self._require_org_admin_organization(current_user)
+        organization = await self.update_organization(organization_id, data)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return organization
+
+    def _require_org_admin_organization(self, current_user: User) -> UUID:
+        if current_user.role != UserRole.ORG_ADMIN or not current_user.organization_id:
+            raise HTTPException(status_code=403, detail="Not Authorized")
+        return current_user.organization_id
 
     async def delete_organization(self, organization_id: UUID):
         # Logic to delete an organization from the database
@@ -114,7 +167,7 @@ class OrganizationService:
     async def update_application_status(self, application_id: UUID, status: Status, frontend_url: str = FRONTEND_URL):
         result = await self.db.execute(
             select(OrganizationApplication).where(OrganizationApplication.id == application_id))
-        application: Optional[OrganizationApplication] = result.scalar_one_or_none()
+        application: OrganizationApplication | None = result.scalar_one_or_none()
 
         if not application:
             raise HTTPException(status_code=404, detail="Application not found")
@@ -127,6 +180,11 @@ class OrganizationService:
             organization = Organization(
                 email=normalize_email(application.email),
                 name=application.org_name,
+                slug=await allocate_unique_slug(
+                    self.db,
+                    Organization,
+                    application.org_name,
+                ),
                 description=application.description,
                 website=application.website
             )
@@ -136,7 +194,7 @@ class OrganizationService:
             invite = OrganizationInvite(
                 email=normalize_email(application.email),
                 organization_id=organization.id,
-                expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+                expires_at=datetime.now(UTC) + timedelta(days=7),
                 role=UserRole.ORG_ADMIN,
             )
             self.db.add(invite)
@@ -158,6 +216,7 @@ class OrganizationService:
         if not should_send_approval_email:
             await self.db.refresh(application)
         if should_send_approval_email:
+            assert setup_token is not None
             await self.email_service.send_approval_email(application.email, application.org_name, setup_token,
                                                          frontend_url)
         return application

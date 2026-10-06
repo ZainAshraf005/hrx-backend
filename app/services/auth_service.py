@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.security import (
     create_signed_token,
@@ -16,13 +16,16 @@ from app.core.security import (
     verify_otp,
     verify_password,
 )
+from app.models.employee.employee_model import Employee
 from app.models.enums import UserRole
 from app.models.organization.organization import Organization
 from app.models.organization.organization_invite import OrganizationInvite
-from app.models.employee.employee_model import Employee
 from app.models.user.password_reset_otp import PasswordResetOtp
 from app.models.user.user_model import User
-from app.schemas.auth_schema import ProfileOrganizationUpdateRequest, ProfileUpdateRequest
+from app.schemas.auth_schema import (
+    ProfileOrganizationUpdateRequest,
+    ProfileUpdateRequest,
+)
 from app.services.email_service import EmailService
 
 
@@ -59,6 +62,7 @@ class AuthService:
             raise HTTPException(status_code=400, detail="User already exists")
 
         user = User(
+            name="",
             email=invite.email,
             password_hash=hash_password(password),
             organization_id=invite.organization_id,
@@ -81,8 +85,9 @@ class AuthService:
 
     async def request_forgot_password_otp(self, email: str):
         normalized_email = normalize_email(email)
-        user = await self._get_user_by_email(normalized_email)
-        self._validate_password_reset_user(user)
+        user = self._require_password_reset_user(
+            await self._get_user_by_email(normalized_email)
+        )
 
         active_resets = await self.db.execute(
             select(PasswordResetOtp).where(
@@ -99,7 +104,7 @@ class AuthService:
             user_id=user.id,
             email=normalized_email,
             otp_hash=hash_otp(otp),
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
         )
         self.db.add(reset)
         await self.db.commit()
@@ -109,8 +114,9 @@ class AuthService:
 
     async def reset_forgot_password(self, email: str, token: str, password: str):
         normalized_email = normalize_email(email)
-        user = await self._get_user_by_email(normalized_email)
-        self._validate_password_reset_user(user)
+        user = self._require_password_reset_user(
+            await self._get_user_by_email(normalized_email)
+        )
 
         reset = await self._get_latest_active_password_reset(normalized_email)
         if (
@@ -167,14 +173,15 @@ class AuthService:
         user = await self._get_user_by_id(current_user.id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return self._serialize_user(user)
+        return self._serialize_profile(user)
 
     async def update_profile(self, current_user: User, data: ProfileUpdateRequest):
         user = await self._get_user_by_id(current_user.id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role == UserRole.SUPERADMIN:
-            raise HTTPException(status_code=403, detail="Profile update is not allowed for superadmin")
+       
+        if data.name is not None:
+            user.name = data.name
 
         if data.email is not None:
             email = normalize_email(str(data.email))
@@ -191,18 +198,12 @@ class AuthService:
                 raise HTTPException(status_code=400, detail="Organization not found")
             await self._apply_organization_profile_update(user.organization, data.organization)
 
-        employee_fields = {"first_name", "last_name", "phone"}
-        if employee_fields.intersection(data.model_fields_set):
+        if "phone" in data.model_fields_set:
             if user.role not in {UserRole.EMPLOYEE, UserRole.HR_MANAGER}:
                 raise HTTPException(status_code=403, detail="Employee profile update is only allowed for employees")
             if not user.employee:
                 raise HTTPException(status_code=400, detail="Employee profile not found")
-            if data.first_name is not None:
-                user.employee.first_name = data.first_name
-            if data.last_name is not None:
-                user.employee.last_name = data.last_name
-            if "phone" in data.model_fields_set:
-                user.employee.phone = data.phone
+            user.employee.phone = data.phone
 
         await self.db.commit()
         return await self.get_profile(user)
@@ -270,11 +271,12 @@ class AuthService:
         )
         return result.scalars().first()
 
-    def _validate_password_reset_user(self, user: User | None):
+    def _require_password_reset_user(self, user: User | None) -> User:
         if not user or not user.is_active or not user.is_verified or not user.password_hash:
             raise HTTPException(status_code=404, detail="User not found")
         if user.role == UserRole.SUPERADMIN:
             raise HTTPException(status_code=403, detail="Password reset is not allowed for superadmin")
+        return user
 
     async def _create_access_token(self, user: User):
         token = create_signed_token(
@@ -304,6 +306,12 @@ class AuthService:
             "employee": self._serialize_employee(user.employee),
         }
 
+    def _serialize_profile(self, user: User):
+        return {
+            **self._serialize_user(user),
+            "name": user.name,
+        }
+
     def _serialize_organization(self, organization: Organization | None):
         if not organization:
             return None
@@ -311,6 +319,7 @@ class AuthService:
         return {
             "id": organization.id,
             "name": organization.name,
+            "slug": organization.slug,
             "email": organization.email,
             "website": organization.website,
             "description": organization.description,
@@ -332,5 +341,5 @@ class AuthService:
 
     def _is_expired(self, value: datetime) -> bool:
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value <= datetime.now(timezone.utc)
+            value = value.replace(tzinfo=UTC)
+        return value <= datetime.now(UTC)

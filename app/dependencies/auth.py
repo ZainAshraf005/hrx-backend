@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 from uuid import UUID
 
 from fastapi import Cookie, Depends, HTTPException, status
@@ -15,7 +15,7 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
+        status_code=status.HTTP_403_FORBIDDEN,
         detail="Not authenticated",
     )
 

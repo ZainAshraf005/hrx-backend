@@ -1,4 +1,3 @@
-from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -15,7 +14,7 @@ def get_frontend_url_from_request(request: Request) -> str:
     return FRONTEND_URL.rstrip("/")
 
 
-def _normalize_origin(value: Optional[str]) -> Optional[str]:
+def _normalize_origin(value: str | None) -> str | None:
     if not value:
         return None
 
